@@ -295,7 +295,7 @@ impl Configuration {
                         loader
                             .try_write()
                             .map_err(|_| ConfigurationLoadError::AcquireLock {
-                                configuration_source: source.to_string(),
+                                url: source.to_string(),
                             })?;
                     loader.try_load(
                         source.clone(),

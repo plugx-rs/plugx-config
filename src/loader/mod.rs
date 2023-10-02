@@ -11,57 +11,44 @@ pub mod fs;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigurationLoadError {
+    #[error("{loader} configuration loader could not found configuration `{url}`")]
+    NotFound { loader: String, url: String },
+    #[error("{loader} configuration loader has no access to load configuration from `{url}`")]
+    NoAccess { loader: String, url: String },
     #[error(
-        "{loader} configuration loader could not found configuration `{configuration_source}`"
+        "{loader} configuration loader reached timeout `{timeout_in_seconds}s` to load `{url}`"
     )]
-    NotFound {
-        loader: String,
-        configuration_source: String,
-    },
-    #[error("{loader} configuration loader has no access to load configuration from `{configuration_source}`")]
-    NoAccess {
-        loader: String,
-        configuration_source: String,
-    },
-    #[error("{loader} configuration loader reached timeout `{timeout_in_seconds}s` to load `{configuration_source}`")]
     Timeout {
         loader: String,
-        configuration_source: String,
+        url: String,
         timeout_in_seconds: usize,
     },
-    #[error("{loader} configuration loader got invalid source `{configuration_source}`")]
+    #[error("{loader} configuration loader got invalid source `{url}`")]
     InvalidSource {
         loader: String,
-        configuration_source: String,
-        #[source]
-        error: anyhow::Error,
-    },
-    #[error("Invalid URL `{url}`")]
-    InvalidUrl {
         url: String,
         #[source]
         error: anyhow::Error,
     },
     #[error("Could not found configuration loader for scheme {scheme}")]
     UrlSchemeNotFound { scheme: String },
-    #[error("{loader} configuration loader found duplicate configurations `{configuration_source}({extension_1}|{extension_2})`")]
+    #[error("{loader} configuration loader found duplicate configurations `{url}({extension_1}|{extension_2})`")]
     Duplicate {
         loader: String,
-        configuration_source: String,
+        url: String,
         extension_1: String,
         extension_2: String,
     },
-    #[error("{loader} configuration loader could not {description} `{configuration_source}`")]
+    #[error("{loader} configuration loader could not {description} `{url}`")]
     Load {
         loader: String,
-        configuration_source: String,
+        url: String,
         description: String,
-        #[source]
-        error: anyhow::Error,
+        source: anyhow::Error,
         retryable: bool,
     },
-    #[error("Could not acquire lock for configuration loader with source ")]
-    AcquireLock { configuration_source: String },
+    #[error("Could not acquire lock for configuration loader with url `{url}`")]
+    AcquireLock { url: String },
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }
@@ -76,15 +63,19 @@ pub trait ConfigurationLoader: Send + Sync + Debug {
 }
 
 #[cfg(feature = "qs")]
-pub fn parse_url<R: DeserializeOwned>(url: &mut Url) -> Result<R, ConfigurationLoadError> {
+pub fn parse_url<R: DeserializeOwned>(
+    loader: &'static str,
+    url: &mut Url,
+) -> Result<R, ConfigurationLoadError> {
     serde_qs::from_str(url.query().unwrap_or_default())
         .map(|result| {
             url.set_query(None);
             result
         })
-        .map_err(|error| ConfigurationLoadError::InvalidUrl {
-            url: url.to_string(),
+        .map_err(|error| ConfigurationLoadError::InvalidSource {
+            loader: loader.to_string(),
             error: error.into(),
+            url: url.to_string(),
         })
 }
 

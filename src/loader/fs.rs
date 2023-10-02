@@ -70,15 +70,15 @@ impl ConfigurationLoader for ConfigurationLoaderFs {
             return if self.retryable_error_list.contains(&io::ErrorKind::NotFound) {
                 Err(ConfigurationLoadError::Load {
                     loader: NAME.to_string(),
-                    configuration_source: source,
+                    url: source,
                     description: "find source".to_string(),
-                    error: anyhow!(io::Error::from(io::ErrorKind::NotFound)),
+                    source: anyhow!(io::Error::from(io::ErrorKind::NotFound)),
                     retryable: true,
                 })
             } else {
                 Err(ConfigurationLoadError::NotFound {
                     loader: self.name().to_string(),
-                    configuration_source: source,
+                    url: source,
                 })
             };
         }
@@ -88,9 +88,9 @@ impl ConfigurationLoader for ConfigurationLoaderFs {
                     let retryable = self.retryable_error_list.contains(&error.kind());
                     ConfigurationLoadError::Load {
                         loader: NAME.to_string(),
-                        configuration_source: source,
+                        url: source,
                         description: "search in directory".to_string(),
-                        error: anyhow!(error),
+                        source: anyhow!(error),
                         retryable,
                     }
                 })?
@@ -119,7 +119,7 @@ impl ConfigurationLoader for ConfigurationLoaderFs {
         } else {
             return Err(ConfigurationLoadError::InvalidSource {
                 loader: NAME.to_string(),
-                configuration_source: source,
+                url: source,
                 error: anyhow::Error::msg("source is not a directory or regular file"),
             });
         };
@@ -202,7 +202,7 @@ impl ConfigurationLoader for ConfigurationLoaderFs {
                             .unwrap_or_default();
                         return Err(ConfigurationLoadError::Duplicate {
                             loader: NAME.to_string(),
-                            configuration_source: other_raw_configuration
+                            url: other_raw_configuration
                                 .source()
                                 .strip_suffix(&format)
                                 .unwrap_or_default()
@@ -220,9 +220,9 @@ impl ConfigurationLoader for ConfigurationLoaderFs {
                         let retryable = self.retryable_error_list.contains(&error.kind());
                         ConfigurationLoadError::Load {
                             loader: NAME.to_string(),
-                            configuration_source: raw_configuration.source().to_string(),
+                            url: raw_configuration.source().to_string(),
                             description: "read file contents".to_string(),
-                            error: anyhow!(error),
+                            source: anyhow!(error),
                             retryable,
                         }
                     })?;
