@@ -1,0 +1,34 @@
+name: Check
+
+on:
+  push:
+    tags-ignore:
+      - "*.*.*"
+    branches-ignore:
+      - "documentation"
+  pull_request:
+    branches:
+      - "master"
+
+jobs:
+  build:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Installing Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          components: rustfmt, clippy
+
+      - name: Checking out sources
+        uses: actions/checkout@v1
+      - name: Check source style
+        run: cargo fmt --check
+      - name: Build source
+        run: cargo build --all-features
+      - name: Test current source
+        run: cargo test --all-features -- --nocapture
+      - name: Clippy
+        run: cargo clippy --all-features
