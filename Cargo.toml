@@ -2,7 +2,15 @@
 name = "plugx-config"
 version = "0.0.1"
 edition = "2021"
-
+description = "Plugin configuration management"
+license = "BSD-3-Clause"
+readme = "README.md"
+homepage = "https://crates.io/crates/plugx-config"
+documentation = "https://docs.rs/plugx-config"
+repository = "https://github.com/plugx-rs/plugx-config"
+categories = ["configuration", "cfg"]
+keywords = ["configuration", "env"]
+include = ["src/**/*.rs", "Cargo.toml", "LICENSE", "README.md"]
 
 [dependencies]
 thiserror = "1.0.40"
