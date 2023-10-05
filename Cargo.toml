@@ -32,7 +32,7 @@ tracing = {version = "0.1.37", optional = true}
 
 [features]
 default = ["logging", "env"]
-env = ["env-loader", "env-parser"]
+env = ["dep:dotenv-parser", "dep:serde_json"]
 
 logging = ["dep:log", "plugx-input/logging"]
 tracing = ["dep:tracing", "plugx-input/tracing"]
@@ -40,7 +40,6 @@ tracing = ["dep:tracing", "plugx-input/tracing"]
 json = ["dep:serde_json"]
 yaml = ["dep:serde_yaml"]
 toml = ["dep:toml"]
-env-parser = ["dep:dotenv-parser", "dep:serde_json"]
 
 env-loader = []
 qs = ["dep:serde_qs"]
@@ -58,3 +57,5 @@ fs = []
 [dev-dependencies]
 tracing-subscriber = {version = "0.3.17", features = ["json"]}
 env_logger = "0.10.0"
+tempdir = "0.3.7"
+

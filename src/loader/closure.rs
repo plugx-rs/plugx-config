@@ -1,3 +1,4 @@
+use crate::loader::BoxedLoaderModifierFn;
 use crate::{
     entity::ConfigurationEntity,
     loader::{ConfigurationLoadError, ConfigurationLoader},
@@ -10,16 +11,18 @@ use url::Url;
 
 pub type BoxedLoaderFn = Box<
     dyn Fn(
-            Url,
+            &Url,
             Option<&[String]>,
         ) -> Result<HashMap<String, ConfigurationEntity>, ConfigurationLoadError>
         + Send
         + Sync,
 >;
+pub type BoxedCheckUrlFn = Box<dyn Fn(&Url) -> Result<(), ConfigurationLoadError> + Send + Sync>;
 
 pub struct ConfigurationLoaderFn {
     name: &'static str,
     loader: BoxedLoaderFn,
+    maybe_modifier: Option<BoxedLoaderModifierFn>,
     scheme_list: Vec<String>,
 }
 
@@ -27,10 +30,7 @@ impl Debug for ConfigurationLoaderFn {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ConfigurationLoaderFn")
             .field("name", &self.name)
-            .field(
-                "loader",
-                &stringify!(Box<dyn Fn(&str, Option<&[String]>) -> Result<HashMap<String, Configuration>, ConfigurationLoadError> + Send + Sync),
-            )
+            .field("scheme_list", &self.scheme_list)
             .finish()
     }
 }
@@ -40,7 +40,8 @@ impl ConfigurationLoaderFn {
         Self {
             name,
             loader,
-            scheme_list: [scheme.as_ref().to_string()].to_vec(),
+            maybe_modifier: None,
+            scheme_list: [scheme.as_ref().into()].into(),
         }
     }
 
@@ -76,6 +77,14 @@ impl ConfigurationLoaderFn {
 }
 
 impl ConfigurationLoader for ConfigurationLoaderFn {
+    fn set_modifier(&mut self, modifier: BoxedLoaderModifierFn) {
+        self.maybe_modifier = Some(modifier)
+    }
+
+    fn maybe_get_modifier(&self) -> Option<&BoxedLoaderModifierFn> {
+        self.maybe_modifier.as_ref()
+    }
+
     fn name(&self) -> &'static str {
         self.name
     }
@@ -86,10 +95,10 @@ impl ConfigurationLoader for ConfigurationLoaderFn {
 
     fn try_load(
         &self,
-        source: Url,
+        url: &Url,
         maybe_whitelist: Option<&[String]>,
     ) -> Result<HashMap<String, ConfigurationEntity>, ConfigurationLoadError> {
-        (self.loader)(source, maybe_whitelist)
+        (self.loader)(url, maybe_whitelist)
     }
 }
 

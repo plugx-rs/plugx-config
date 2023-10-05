@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::fmt::{Debug, Display};
 use thiserror::Error;
 
-#[cfg(feature = "env-parser")]
+#[cfg(feature = "env")]
 pub mod env;
 #[cfg(feature = "json")]
 pub mod json;
@@ -29,7 +29,6 @@ pub enum ConfigurationParserError {
         data: String,
         parser: String,
         supported_format_list: Vec<String>,
-        #[source]
         source: anyhow::Error,
     },
     #[error("Could not found parser")]

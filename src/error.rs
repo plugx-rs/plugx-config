@@ -26,7 +26,7 @@ pub enum ConfigurationError {
 impl ConfigurationError {
     pub fn is_retryable(&self) -> bool {
         if let Self::Load { source, .. } = self {
-            source.is_retryable()
+            source.is_dispensable()
         } else {
             false
         }
