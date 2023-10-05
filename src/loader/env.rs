@@ -1,37 +1,52 @@
-use crate::loader::BoxedLoaderModifierFn;
 use crate::{
     entity::ConfigurationEntity,
-    loader::{ConfigurationLoadError, ConfigurationLoader},
+    loader::{self, BoxedLoaderModifierFn, ConfigurationLoadError, ConfigurationLoader},
 };
-use cfg_if::cfg_if;
-use std::fmt::{Debug, Formatter};
-use std::{collections::HashMap, env};
+use serde::Deserialize;
+use std::{
+    collections::HashMap,
+    env,
+    fmt::{Debug, Formatter},
+};
 use url::Url;
 
 pub const NAME: &str = "Environment-Variables";
 pub const DEFAULT_KEY_SEPARATOR: &str = "__";
 
 pub struct ConfigurationLoaderEnv {
+    options: ConfigurationLoaderEnvOptions,
+    maybe_modifier: Option<BoxedLoaderModifierFn>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct ConfigurationLoaderEnvOptions {
     prefix: String,
     key_separator: String,
-    maybe_modifier: Option<BoxedLoaderModifierFn>,
 }
 
 impl Debug for ConfigurationLoaderEnv {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ConfigurationLoaderEnv")
-            .field("prefix", &self.key_separator)
-            .field("key_separator", &self.key_separator)
+            .field("options", &self.options)
             .finish()
+    }
+}
+
+impl Default for ConfigurationLoaderEnvOptions {
+    fn default() -> Self {
+        Self {
+            prefix: "".to_string(),
+            key_separator: DEFAULT_KEY_SEPARATOR.to_string(),
+        }
     }
 }
 
 impl Default for ConfigurationLoaderEnv {
     fn default() -> Self {
         Self {
-            prefix: "".to_string(),
-            key_separator: DEFAULT_KEY_SEPARATOR.to_string(),
-            maybe_modifier: None,
+            options: Default::default(),
+            maybe_modifier: Default::default(),
         }
     }
 }
@@ -42,10 +57,7 @@ impl ConfigurationLoaderEnv {
     }
 
     pub fn set_prefix<P: AsRef<str>>(&mut self, prefix: P) {
-        let (prefix, key_separator) =
-            Self::fix(Some(prefix.as_ref()), Some(self.key_separator.as_str()));
-        self.prefix = prefix;
-        self.key_separator = key_separator;
+        self.options.prefix = prefix.as_ref().to_string();
     }
 
     pub fn with_prefix<P: AsRef<str>>(mut self, prefix: P) -> Self {
@@ -54,72 +66,12 @@ impl ConfigurationLoaderEnv {
     }
 
     pub fn set_key_separator<K: AsRef<str>>(&mut self, key_separator: K) {
-        let (prefix, key_separator) =
-            Self::fix(Some(self.prefix.as_str()), Some(key_separator.as_ref()));
-        self.prefix = prefix;
-        self.key_separator = key_separator;
+        self.options.key_separator = key_separator.as_ref().to_string();
     }
 
     pub fn with_key_separator<K: AsRef<str>>(mut self, key_separator: K) -> Self {
         self.set_key_separator(key_separator);
         self
-    }
-
-    fn fix(maybe_prefix: Option<&str>, maybe_key_separator: Option<&str>) -> (String, String) {
-        let key_separator = if let Some(key_separator) = maybe_key_separator {
-            let trimmed_key_separator = key_separator.trim().to_string();
-            if key_separator != trimmed_key_separator {
-                cfg_if! {
-                    if #[cfg(feature = "tracing")] {
-                        tracing::trace!(
-                            loader = NAME,
-                            old = key_separator,
-                            new = trimmed_key_separator,
-                            "updated environment-variable key separator"
-                        );
-                    } else if #[cfg(feature = "logging")] {
-                        log::trace!(
-                            "loader={:?} old={:?} new={:?} message=\"updated environment-variable key separator\"",
-                            NAME,
-                            key_separator,
-                            trimmed_key_separator,
-                        );
-                    }
-                }
-            };
-            trimmed_key_separator
-        } else {
-            DEFAULT_KEY_SEPARATOR.to_string()
-        };
-        let prefix = if let Some(prefix) = maybe_prefix {
-            let mut trimmed_prefix = prefix.trim().to_string();
-            if !key_separator.is_empty() && !trimmed_prefix.ends_with(&key_separator) {
-                trimmed_prefix += key_separator.as_str();
-            }
-            if prefix != trimmed_prefix {
-                cfg_if! {
-                    if #[cfg(feature = "tracing")] {
-                        tracing::trace!(
-                            loader = NAME,
-                            old = prefix,
-                            new = trimmed_prefix,
-                            "updated environment-variable prefix"
-                        );
-                    } else if #[cfg(feature = "logging")] {
-                        log::trace!(
-                            "loader={:?}, old={:?} new={:?} message=\"updated environment-variable prefix\"",
-                            NAME,
-                            prefix,
-                            trimmed_prefix,
-                        );
-                    }
-                }
-            };
-            trimmed_prefix
-        } else {
-            String::new()
-        };
-        (prefix, key_separator)
     }
 }
 
@@ -137,7 +89,7 @@ impl ConfigurationLoader for ConfigurationLoaderEnv {
     }
 
     fn scheme_list(&self) -> Vec<String> {
-        ["env".to_string()].to_vec()
+        ["env".into()].into()
     }
 
     fn try_load(
@@ -145,92 +97,80 @@ impl ConfigurationLoader for ConfigurationLoaderEnv {
         url: &Url,
         maybe_whitelist: Option<&[String]>,
     ) -> Result<HashMap<String, ConfigurationEntity>, ConfigurationLoadError> {
-        let prefix = if let Some((_, prefix)) = url.query_pairs().find(|(key, _)| key == "prefix") {
-            prefix.to_string()
-        } else {
-            self.prefix.to_string()
-        };
-        let key_separator = if let Some((_, key_separator)) =
-            url.query_pairs().find(|(key, _)| key == "key_separator")
-        {
-            key_separator.to_string()
-        } else {
-            self.key_separator.to_string()
-        };
-        let (prefix, key_separator) = Self::fix(Some(&prefix), Some(&key_separator));
-        let mut result: HashMap<String, ConfigurationEntity> = HashMap::new();
+        let ConfigurationLoaderEnvOptions {
+            prefix,
+            key_separator,
+        } = loader::deserialize_query_string(NAME, url)?;
+        let mut result: HashMap<String, String> = HashMap::new();
         env::vars()
-            .filter(|(key, _)| {
-                if prefix.is_empty() {
-                    true
-                } else {
-                    key.starts_with(prefix.as_str())
-                }
-            })
-            .for_each(|(full_key, value)| {
-                if full_key.is_empty() {
-                    return;
-                }
+            .filter(|(key, _)| prefix.is_empty() || key.starts_with(prefix.as_str()))
+            .filter(|(key, _)| !key.is_empty())
+            .map(|(mut key, value)| {
+                key = key.chars().skip(prefix.chars().count()).collect();
                 let key_list = if key_separator.is_empty() {
-                    [full_key].to_vec()
+                    [key].to_vec()
                 } else {
-                    let key_list: Vec<String> = full_key
-                        .splitn(2, key_separator.as_str())
+                    key.splitn(2, key_separator.as_str())
                         .map(|key| key.to_string())
-                        .collect();
-                    if key_list.len() == 2 {
-                        key_list
-                    } else {
-                        [full_key].to_vec()
-                    }
+                        .collect()
                 };
-                if let Some(whitelist) = maybe_whitelist {
-                    if !whitelist.contains(&key_list[0].to_lowercase()) {
-                        return;
-                    }
-                }
-                if let Some(configuration) = result.get_mut(key_list[0].as_str()) {
-                    if key_list.len() == 2 {
-                        configuration
-                            .maybe_contents_mut()
-                            .as_mut()
-                            .map(|key_values| format!("{key_values}\n{}={value:?}", key_list[1]));
-                    } else {
-                        unreachable!()
-                    }
+                (key_list, value)
+            })
+            .filter(|(key_list, _)| key_list.len() > 1)
+            .map(|(mut key_list, value)| {
+                let plugin_name = key_list.remove(0).to_lowercase();
+                let key = key_list.get(0).cloned().unwrap_or_default();
+                (plugin_name, key, value)
+            })
+            .filter(|(_, key, _)| !key.is_empty())
+            .filter(|(plugin_name, _, _)| {
+                maybe_whitelist
+                    .as_ref()
+                    .map(|whitelist| whitelist.contains(plugin_name))
+                    .unwrap_or(true)
+            })
+            .for_each(|(plugin_name, key, value)| {
+                let key_value = format!("{key}={value:?}");
+                if let Some(configuration) = result.get_mut(&plugin_name) {
+                    *configuration += "\n";
+                    *configuration += key_value.as_str();
                 } else {
-                    let mut configuration =
-                        ConfigurationEntity::new(url.clone(), &key_list[0], self.name())
-                            .with_format("env");
-                    let contents = if key_list.len() == 2 {
-                        format!("{}={value:?}", key_list[1])
-                    } else {
-                        format!("{value:?}")
-                    };
-                    configuration.set_contents(contents);
-                    result.insert(key_list[0].to_lowercase(), configuration);
+                    result.insert(plugin_name, key_value);
                 }
             });
-        Ok(result)
+        Ok(result
+            .into_iter()
+            .map(|(plugin_name, contents)| {
+                (
+                    plugin_name.clone(),
+                    ConfigurationEntity::new(url.clone(), plugin_name, NAME)
+                        .with_format("env")
+                        .with_contents(contents),
+                )
+            })
+            .collect())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::logging::enable_logging;
+    use crate::logging::{enable_logging, info};
 
     #[test]
     fn load() {
         enable_logging();
-        // let mut l = ConfigurationLoaderEnv::new("FOO")
-        //     .unwrap()
-        //     .with_key_separator("_");
-        // println!("{l:?}");
-        // let loaded = l.try_load().unwrap();
-        // println!("{loaded:#?}");
-        // for (p, r) in loaded {
-        //     println!("{p}: {:?}\n\n\n\n", r.deserialize());
-        // }
+        let url = Url::try_from("env://?prefix=__&key_separator=..").unwrap();
+        let loader = ConfigurationLoaderEnv::new();
+        env::set_var("__A..B..C", "D");
+        let loaded = loader.try_load(&url, None).unwrap();
+        let a = loaded.get("a");
+        info(format!("Loaded {loaded:?}"));
+        assert!(a.is_some());
+        let a = a.unwrap();
+        assert_eq!(a.maybe_contents(), Some(&"B..C=\"D\"".to_string()));
+
+        let loaded = loader.try_load(&url, Some(&["x".into()])).unwrap();
+        assert!(loaded.is_empty());
     }
 }

@@ -46,12 +46,12 @@ pub fn enable_logging() {
 }
 
 #[cfg(test)]
-pub fn info(text: String) {
+pub fn info(_text: String) {
     cfg_if::cfg_if! {
         if #[cfg(feature = "tracing")] {
-            tracing::info!(text);
+            tracing::info!(_text);
         } else if #[cfg(feature = "logging")] {
-            log::info!("{}", text);
+            log::info!("{_text}");
         }
     }
 }
