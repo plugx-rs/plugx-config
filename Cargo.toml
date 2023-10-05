@@ -32,7 +32,7 @@ tracing = {version = "0.1.37", optional = true}
 
 [features]
 default = ["logging", "env"]
-env = ["dep:dotenv-parser", "dep:serde_json"]
+env = ["dep:dotenv-parser", "dep:serde_json", "qs"]
 
 logging = ["dep:log", "plugx-input/logging"]
 tracing = ["dep:tracing", "plugx-input/tracing"]
@@ -41,9 +41,8 @@ json = ["dep:serde_json"]
 yaml = ["dep:serde_yaml"]
 toml = ["dep:toml"]
 
-env-loader = []
 qs = ["dep:serde_qs"]
-fs = []
+fs = ["qs"]
 #http = ["dep:attohttpc"]
 #http-basic-auth = ["attohttpc?/basic-auth"]
 #http-compress = ["http", "attohttpc?/compress"]
