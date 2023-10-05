@@ -18,7 +18,7 @@ pub struct Configuration {
     parser_list: Vec<Box<dyn ConfigurationParser>>,
     loader_list: Vec<Box<dyn ConfigurationLoader>>,
     #[allow(clippy::type_complexity)]
-    source_list: Vec<(Url, Option<Arc<RwLock<Box<dyn ConfigurationLoader>>>>)>,
+    url_list: Vec<(Url, Option<Arc<RwLock<Box<dyn ConfigurationLoader>>>>)>,
     states: HashMap<String, Vec<ConfigurationEntity>>,
     merged: HashMap<String, Input>,
     maybe_whitelist: Option<Vec<String>>,
@@ -48,7 +48,7 @@ impl Configuration {
         Self {
             parser_list: Default::default(),
             loader_list: Default::default(),
-            source_list: Default::default(),
+            url_list: Default::default(),
             states: Default::default(),
             merged: Default::default(),
             maybe_whitelist: Default::default(),
@@ -59,104 +59,101 @@ impl Configuration {
 }
 
 impl Configuration {
-    pub fn with_source<S>(mut self, source: S) -> Self
+    pub fn with_url<S>(mut self, url: S) -> Self
     where
         S: Into<Url>,
     {
-        self.add_source(source);
+        self.add_url(url);
         self
     }
 
-    pub fn add_source<S>(&mut self, source: S)
+    pub fn add_url<S>(&mut self, url: S)
     where
         S: Into<Url>,
     {
-        let source = source.into();
-        if !self.has_source(source.clone()) {
-            self.source_list.push((source, None));
+        let url = url.into();
+        if !self.has_url(url.clone()) {
+            self.url_list.push((url, None));
         }
     }
 
-    pub fn has_source<S>(&mut self, source: S) -> bool
+    pub fn has_url<S>(&mut self, url: S) -> bool
     where
         S: Into<Url>,
     {
-        let source = source.into();
-        self.source_list
+        let url = url.into();
+        self.url_list
             .iter()
-            .find(|(inner_source, _)| inner_source == &source)
+            .find(|(inner_url, _)| inner_url == &url)
             .map(|_| true)
             .unwrap_or_default()
     }
 
-    pub fn with_source_and_loader<S, L>(self, source: S, loader: L) -> Self
+    pub fn with_url_and_loader<S, L>(self, url: S, loader: L) -> Self
     where
         S: Into<Url>,
         L: ConfigurationLoader + 'static,
     {
-        self.with_source_and_boxed_loader(source, Box::new(loader))
+        self.with_url_and_boxed_loader(url, Box::new(loader))
     }
 
-    pub fn add_source_and_loader<S, L>(&mut self, source: S, loader: L)
+    pub fn add_url_and_loader<S, L>(&mut self, url: S, loader: L)
     where
         S: Into<Url>,
         L: ConfigurationLoader + 'static,
     {
-        self.add_source_and_boxed_loader(source, Box::new(loader))
+        self.add_url_and_boxed_loader(url, Box::new(loader))
     }
 
-    pub fn with_source_and_boxed_loader<S>(
+    pub fn with_url_and_boxed_loader<S>(
         mut self,
-        source: S,
+        url: S,
         loader: Box<dyn ConfigurationLoader>,
     ) -> Self
     where
         S: Into<Url>,
     {
-        self.add_source_and_boxed_loader(source, loader);
+        self.add_url_and_boxed_loader(url, loader);
         self
     }
 
-    pub fn add_source_and_boxed_loader<S>(
-        &mut self,
-        source: S,
-        loader: Box<dyn ConfigurationLoader>,
-    ) where
-        S: Into<Url>,
-    {
-        let source = source.into();
-        if !self.has_source(source.clone()) {
-            self.source_list
-                .push((source, Some(Arc::new(RwLock::new(loader)))));
-        }
-    }
-
-    pub fn remove_source_and_loader<S>(&mut self, source: S) -> bool
+    pub fn add_url_and_boxed_loader<S>(&mut self, url: S, loader: Box<dyn ConfigurationLoader>)
     where
         S: Into<Url>,
     {
-        let source = source.into();
-        self.source_list
+        let url = url.into();
+        if !self.has_url(url.clone()) {
+            self.url_list
+                .push((url, Some(Arc::new(RwLock::new(loader)))));
+        }
+    }
+
+    pub fn remove_url_and_loader<S>(&mut self, url: S) -> bool
+    where
+        S: Into<Url>,
+    {
+        let url = url.into();
+        self.url_list
             .iter_mut()
-            .position(|(inner_source, _)| inner_source == &source)
+            .position(|(inner_url, _)| inner_url == &url)
             .map(|index| {
-                self.source_list.remove(index);
+                self.url_list.remove(index);
                 true
             })
             .unwrap_or_default()
     }
 
-    pub fn take_boxed_loader<S>(&mut self, source: S) -> Option<Box<dyn ConfigurationLoader>>
+    pub fn take_boxed_loader<S>(&mut self, url: S) -> Option<Box<dyn ConfigurationLoader>>
     where
         S: Into<Url>,
     {
-        let source = source.into();
+        let url = url.into();
         if let Some(index) = self
-            .source_list
+            .url_list
             .iter_mut()
-            .position(|(inner_source, _)| inner_source == &source)
+            .position(|(inner_url, _)| inner_url == &url)
         {
-            let (_, maybe_loader) = self.source_list.remove(index);
+            let (_, maybe_loader) = self.url_list.remove(index);
             maybe_loader
                 .map(|loader| {
                     Arc::into_inner(loader)
@@ -169,17 +166,14 @@ impl Configuration {
         }
     }
 
-    pub fn get_boxed_loader<S>(
-        &self,
-        source: S,
-    ) -> Option<Arc<RwLock<Box<dyn ConfigurationLoader>>>>
+    pub fn get_boxed_loader<S>(&self, url: S) -> Option<Arc<RwLock<Box<dyn ConfigurationLoader>>>>
     where
         S: Into<Url>,
     {
-        let source = source.into();
-        self.source_list
+        let url = url.into();
+        self.url_list
             .iter()
-            .find(|(inner_source, _)| inner_source == &source)
+            .find(|(inner_url, _)| inner_url == &url)
             .map(|(_, loader)| loader.clone())
             .unwrap_or_default()
     }
@@ -287,37 +281,31 @@ impl Configuration {
 impl Configuration {
     pub fn try_load(&mut self, skip_retryable: bool) -> Result<(), ConfigurationLoadError> {
         let maybe_whitelist = self.maybe_whitelist.as_ref();
-        self.source_list
+        self.url_list
             .iter_mut()
-            .try_for_each(|(source, maybe_loader)| {
+            .try_for_each(|(url, maybe_loader)| {
                 let load_result = if let Some(loader) = maybe_loader {
                     let loader =
                         loader
                             .try_write()
                             .map_err(|_| ConfigurationLoadError::AcquireLock {
-                                configuration_source: source.to_string(),
+                                url: url.to_string(),
                             })?;
-                    loader.try_load(
-                        source.clone(),
-                        maybe_whitelist.map(|vector| vector.as_slice()),
-                    )
+                    loader.try_load(url, maybe_whitelist.map(|vector| vector.as_slice()))
                 } else if let Some(loader) = self
                     .loader_list
                     .iter_mut()
-                    .find(|loader| loader.scheme_list().contains(&source.scheme().to_string()))
+                    .find(|loader| loader.scheme_list().contains(&url.scheme().to_string()))
                 {
-                    loader.try_load(
-                        source.clone(),
-                        maybe_whitelist.map(|vector| vector.as_slice()),
-                    )
+                    loader.try_load(url, maybe_whitelist.map(|vector| vector.as_slice()))
                 } else {
                     return Err(ConfigurationLoadError::UrlSchemeNotFound {
-                        scheme: source.scheme().to_string(),
+                        scheme: url.scheme().to_string(),
                     });
                 };
                 load_result
                     .or_else(|error| {
-                        if skip_retryable && error.is_retryable() {
+                        if skip_retryable && error.is_dispensable() {
                             Ok(HashMap::new())
                         } else {
                             Err(error)
@@ -343,7 +331,7 @@ impl Configuration {
                     let parsed = configuration.parse(&self.parser_list).map_err(|error| {
                         ConfigurationError::Parse {
                             plugin_name: plugin_name.to_string(),
-                            configuration_source: configuration.source().to_string(),
+                            configuration_source: configuration.url().to_string(),
                             source: error,
                         }
                     })?;
@@ -372,7 +360,7 @@ impl Configuration {
                             &mut first,
                             plugx_input::position::new().new_with_key(plugin_name),
                             configuration.maybe_parsed().unwrap(),
-                            plugx_input::position::new().new_with_key(configuration.source()),
+                            plugx_input::position::new().new_with_key(configuration.url().as_str()),
                         )
                     });
                 self.merged.insert(plugin_name.to_string(), first);

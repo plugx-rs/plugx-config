@@ -4,94 +4,125 @@ use std::{collections::HashMap, fmt::Debug};
 use url::Url;
 
 pub mod closure;
-#[cfg(feature = "env-loader")]
+#[cfg(feature = "env")]
 pub mod env;
 #[cfg(feature = "fs")]
 pub mod fs;
 
+pub type BoxedLoaderModifierFn = Box<
+    dyn Fn(&Url, &mut HashMap<String, ConfigurationEntity>) -> Result<(), ConfigurationLoadError>
+        + Send
+        + Sync,
+>;
+
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigurationLoadError {
+    #[error("{loader} configuration loader could not found configuration `{url}`")]
+    NotFound { loader: String, url: String },
+    #[error("{loader} configuration loader has no access to load configuration from `{url}`")]
+    NoAccess { loader: String, url: String },
     #[error(
-        "{loader} configuration loader could not found configuration `{configuration_source}`"
+        "{loader} configuration loader reached timeout `{timeout_in_seconds}s` to load `{url}`"
     )]
-    NotFound {
-        loader: String,
-        configuration_source: String,
-    },
-    #[error("{loader} configuration loader has no access to load configuration from `{configuration_source}`")]
-    NoAccess {
-        loader: String,
-        configuration_source: String,
-    },
-    #[error("{loader} configuration loader reached timeout `{timeout_in_seconds}s` to load `{configuration_source}`")]
     Timeout {
         loader: String,
-        configuration_source: String,
+        url: String,
         timeout_in_seconds: usize,
     },
-    #[error("{loader} configuration loader got invalid source `{configuration_source}`")]
+    #[error("{loader} configuration loader got invalid source `{url}`")]
     InvalidSource {
         loader: String,
-        configuration_source: String,
-        #[source]
-        error: anyhow::Error,
-    },
-    #[error("Invalid URL `{url}`")]
-    InvalidUrl {
         url: String,
         #[source]
         error: anyhow::Error,
     },
     #[error("Could not found configuration loader for scheme {scheme}")]
     UrlSchemeNotFound { scheme: String },
-    #[error("{loader} configuration loader found duplicate configurations `{configuration_source}({extension_1}|{extension_2})`")]
+    #[error("{loader} configuration loader found duplicate configurations `{url}/{plugin}.({format_1}|{format_2})`")]
     Duplicate {
         loader: String,
-        configuration_source: String,
-        extension_1: String,
-        extension_2: String,
+        url: String,
+        plugin: String,
+        format_1: String,
+        format_2: String,
     },
-    #[error("{loader} configuration loader could not {description} `{configuration_source}`")]
+    #[error("{loader} configuration loader could not {description} `{url}`")]
     Load {
         loader: String,
-        configuration_source: String,
+        url: String,
         description: String,
-        #[source]
-        error: anyhow::Error,
-        retryable: bool,
+        source: anyhow::Error,
+        skippable: bool,
     },
-    #[error("Could not acquire lock for configuration loader with source ")]
-    AcquireLock { configuration_source: String },
+    #[error("Could not acquire lock for configuration loader with url `{url}`")]
+    AcquireLock { url: String },
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }
 pub trait ConfigurationLoader: Send + Sync + Debug {
+    fn set_modifier(&mut self, _modifier: BoxedLoaderModifierFn) {}
+
+    fn maybe_get_modifier(&self) -> Option<&BoxedLoaderModifierFn> {
+        None
+    }
+
     fn name(&self) -> &'static str;
+
     fn scheme_list(&self) -> Vec<String>;
+
     fn try_load(
         &self,
-        source: Url,
+        source: &Url,
         maybe_whitelist: Option<&[String]>,
     ) -> Result<HashMap<String, ConfigurationEntity>, ConfigurationLoadError>;
+
+    fn try_load_and_maybe_modify(
+        &self,
+        url: &Url,
+        maybe_whitelist: Option<&[String]>,
+    ) -> Result<HashMap<String, ConfigurationEntity>, ConfigurationLoadError> {
+        let mut loaded = self.try_load(url, maybe_whitelist)?;
+        if let Some(modifier) = self.maybe_get_modifier() {
+            // TODO: logging
+            modifier(url, &mut loaded)?
+        };
+        Ok(loaded)
+    }
 }
 
 #[cfg(feature = "qs")]
-pub fn parse_url<R: DeserializeOwned>(url: &mut Url) -> Result<R, ConfigurationLoadError> {
-    serde_qs::from_str(url.query().unwrap_or_default())
-        .map(|result| {
-            url.set_query(None);
-            result
-        })
-        .map_err(|error| ConfigurationLoadError::InvalidUrl {
-            url: url.to_string(),
+pub fn deserialize_query_string<T: DeserializeOwned>(
+    loader_name: &'static str,
+    url: &Url,
+) -> Result<T, ConfigurationLoadError> {
+    serde_qs::from_str(url.query().unwrap_or_default()).map_err(|error| {
+        ConfigurationLoadError::InvalidSource {
+            loader: loader_name.to_string(),
             error: error.into(),
-        })
+            url: url.to_string(),
+        }
+    })
+}
+
+#[cfg(feature = "qs")]
+pub fn deserialize_query_string_and_trim_url<T: DeserializeOwned>(
+    loader_name: &'static str,
+    url: &mut Url,
+) -> Result<T, ConfigurationLoadError> {
+    deserialize_query_string(loader_name, url).map(|result| {
+        url.set_query(None);
+        result
+    })
 }
 
 impl ConfigurationLoadError {
-    pub fn is_retryable(&self) -> bool {
-        if let Self::Load { retryable, .. } = self {
-            *retryable
+    pub fn is_dispensable(&self) -> bool {
+        if let Self::Load {
+            skippable: dispensable,
+            ..
+        } = self
+        {
+            *dispensable
         } else {
             false
         }

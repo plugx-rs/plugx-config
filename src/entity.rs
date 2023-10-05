@@ -2,11 +2,12 @@ use crate::parser::{ConfigurationParser, ConfigurationParserError};
 
 use plugx_input::Input;
 use std::fmt::{Display, Formatter};
+use url::Url;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ConfigurationEntity {
     loader_name: String,
-    source: String,
+    url: Url,
     plugin_name: String,
     maybe_format: Option<String>,
     maybe_contents: Option<String>,
@@ -14,19 +15,18 @@ pub struct ConfigurationEntity {
 }
 
 impl ConfigurationEntity {
-    pub fn new<S, P, L>(source: S, plugin_name: P, loader_name: L) -> Self
+    pub fn new<P, L>(url: Url, plugin_name: P, loader_name: L) -> Self
     where
-        S: AsRef<str>,
         P: AsRef<str>,
         L: AsRef<str>,
     {
         Self {
-            source: source.as_ref().to_string(),
+            url,
             plugin_name: plugin_name.as_ref().to_string(),
             loader_name: loader_name.as_ref().to_string(),
-            maybe_format: None,
-            maybe_contents: None,
-            maybe_parsed: None,
+            maybe_format: Default::default(),
+            maybe_contents: Default::default(),
+            maybe_parsed: Default::default(),
         }
     }
 
@@ -57,12 +57,12 @@ impl ConfigurationEntity {
         self
     }
 
-    pub fn source(&self) -> &String {
-        &self.source
+    pub fn url(&self) -> &Url {
+        &self.url
     }
 
-    pub fn source_mut(&mut self) -> &mut String {
-        &mut self.source
+    pub fn url_mut(&mut self) -> &mut Url {
+        &mut self.url
     }
 
     pub fn plugin_name(&self) -> &String {
@@ -139,6 +139,6 @@ impl ConfigurationEntity {
 
 impl Display for ConfigurationEntity {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        Display::fmt(&self.source, f)
+        Display::fmt(&self.url, f)
     }
 }
