@@ -1,8 +1,8 @@
-//! Configuration loader for Environment-Variables.
+//! Environment-Variables configuration loader.
 //!
 //! This is only usable if you enabled `env` Cargo feature.
 //!
-//!
+//! ### Example
 //! ```rust
 //! use std::collections::HashMap;
 //! use std::env::set_var;
@@ -40,6 +40,8 @@
 //! assert!(result.get("foo").is_some());
 //! assert!(result.get("qux").is_none());
 //! ```
+//!
+//! See [loader] documentation to known how loaders work.
 
 use crate::{
     entity::ConfigurationEntity,
