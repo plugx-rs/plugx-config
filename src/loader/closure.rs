@@ -97,6 +97,15 @@ impl ConfigurationLoaderFn {
         self
     }
 
+    pub fn set_modifier(&mut self, modifier: BoxedLoaderModifierFn) {
+        self.maybe_modifier = Some(modifier)
+    }
+
+    pub fn with_modifier(mut self, modifier: BoxedLoaderModifierFn) -> Self {
+        self.set_modifier(modifier);
+        self
+    }
+
     pub fn set_scheme_list<S: AsRef<str>>(&mut self, scheme_list: Vec<S>) {
         self.scheme_list = scheme_list
             .into_iter()
@@ -111,14 +120,6 @@ impl ConfigurationLoaderFn {
 }
 
 impl ConfigurationLoader for ConfigurationLoaderFn {
-    fn set_modifier(&mut self, modifier: BoxedLoaderModifierFn) {
-        self.maybe_modifier = Some(modifier)
-    }
-
-    fn maybe_get_modifier(&self) -> Option<&BoxedLoaderModifierFn> {
-        self.maybe_modifier.as_ref()
-    }
-
     fn name(&self) -> &'static str {
         self.name
     }
@@ -132,6 +133,11 @@ impl ConfigurationLoader for ConfigurationLoaderFn {
         url: &Url,
         maybe_whitelist: Option<&[String]>,
     ) -> Result<HashMap<String, ConfigurationEntity>, ConfigurationLoadError> {
-        (self.loader)(url, maybe_whitelist)
+        let mut result = (self.loader)(url, maybe_whitelist)?;
+        if let Some(ref modifier) = self.maybe_modifier {
+            // TODO: logging
+            modifier(url, &mut result)?
+        }
+        Ok(result)
     }
 }
