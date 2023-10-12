@@ -28,6 +28,7 @@ pub mod env;
 #[cfg(feature = "fs")]
 pub mod fs;
 
+/// A modifier [Fn] that modifies loaded configurations (if needed).
 pub type BoxedLoaderModifierFn = Box<
     dyn Fn(&Url, &mut HashMap<String, ConfigurationEntity>) -> Result<(), ConfigurationLoadError>
         + Send
@@ -90,35 +91,27 @@ pub enum ConfigurationLoadError {
     Other(#[from] anyhow::Error),
 }
 
+/// A trait to load configurations for one or more plugins.
 pub trait ConfigurationLoader: Send + Sync + Debug {
-    fn set_modifier(&mut self, _modifier: BoxedLoaderModifierFn) {}
-
-    fn maybe_get_modifier(&self) -> Option<&BoxedLoaderModifierFn> {
-        None
-    }
-
+    /// Name of the loader (for logging purposes).
     fn name(&self) -> &'static str;
 
+    /// List of URL schemes that this loader supports.
+    ///
+    /// Different URL may be assigned to this loader by their scheme value.
     fn scheme_list(&self) -> Vec<String>;
 
+    /// Main method that actually loads configurations.
+    ///
+    /// * Checks the `source` and detects its own options from it.
+    /// * Checks whitelist to load just provided plugins configurations.
+    /// * Attempts to load configurations.
+    /// * Tries to set format for each [ConfigurationEntity].
     fn try_load(
         &self,
         source: &Url,
         maybe_whitelist: Option<&[String]>,
     ) -> Result<HashMap<String, ConfigurationEntity>, ConfigurationLoadError>;
-
-    fn try_load_and_maybe_modify(
-        &self,
-        url: &Url,
-        maybe_whitelist: Option<&[String]>,
-    ) -> Result<HashMap<String, ConfigurationEntity>, ConfigurationLoadError> {
-        let mut loaded = self.try_load(url, maybe_whitelist)?;
-        if let Some(modifier) = self.maybe_get_modifier() {
-            // TODO: logging
-            modifier(url, &mut loaded)?
-        };
-        Ok(loaded)
-    }
 }
 
 #[cfg(feature = "qs")]

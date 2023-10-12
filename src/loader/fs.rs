@@ -306,6 +306,15 @@ impl ConfigurationLoaderFs {
         self
     }
 
+    pub fn set_modifier(&mut self, modifier: BoxedLoaderModifierFn) {
+        self.maybe_modifier = Some(modifier)
+    }
+
+    pub fn with_modifier(mut self, modifier: BoxedLoaderModifierFn) -> Self {
+        self.set_modifier(modifier);
+        self
+    }
+
     fn get_options(
         &self,
         url: &Url,
@@ -322,14 +331,6 @@ impl ConfigurationLoaderFs {
 }
 
 impl ConfigurationLoader for ConfigurationLoaderFs {
-    fn set_modifier(&mut self, modifier: BoxedLoaderModifierFn) {
-        self.maybe_modifier = Some(modifier)
-    }
-
-    fn maybe_get_modifier(&self) -> Option<&BoxedLoaderModifierFn> {
-        self.maybe_modifier.as_ref()
-    }
-
     fn name(&self) -> &'static str {
         NAME
     }
@@ -357,9 +358,14 @@ impl ConfigurationLoader for ConfigurationLoaderFs {
                 }
             })
         })?;
-        Ok(entity_list
+        let mut result = entity_list
             .into_iter()
             .map(|entity| (entity.plugin_name().clone(), entity))
-            .collect())
+            .collect();
+        if let Some(ref modifier) = self.maybe_modifier {
+            // TODO: logging
+            modifier(url, &mut result)?;
+        }
+        Ok(result)
     }
 }

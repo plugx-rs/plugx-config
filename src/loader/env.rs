@@ -27,7 +27,7 @@
 //!
 //! // We do not set `whitelist` so we're going to load all plugins configurations:
 //! let mut maybe_whitelist = None;
-//! let result = loader.try_load_and_maybe_modify(&url, maybe_whitelist).unwrap();
+//! let result = loader.try_load(&url, maybe_whitelist).unwrap();
 //! let foo = result.get("foo").unwrap();
 //! assert_eq!(foo.maybe_contents(), Some(&"B_A_R=\"Baz\"".to_string()));
 //! let qux = result.get("qux").unwrap();
@@ -59,12 +59,13 @@ const NAME: &str = "Environment-Variables";
 const DEFAULT_KEY_SEPARATOR: &str = "__";
 
 /// Loads configurations from Environment-Variables.
+#[derive(Default)]
 pub struct ConfigurationLoaderEnv {
     options: ConfigurationLoaderEnvOptions,
     maybe_modifier: Option<BoxedLoaderModifierFn>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 struct ConfigurationLoaderEnvOptions {
     #[serde(rename = "prefix")]
     maybe_prefix: Option<String>,
@@ -77,24 +78,6 @@ impl Debug for ConfigurationLoaderEnv {
         f.debug_struct("ConfigurationLoaderEnv")
             .field("options", &self.options)
             .finish()
-    }
-}
-
-impl Default for ConfigurationLoaderEnvOptions {
-    fn default() -> Self {
-        Self {
-            maybe_prefix: None,
-            maybe_key_separator: None,
-        }
-    }
-}
-
-impl Default for ConfigurationLoaderEnv {
-    fn default() -> Self {
-        Self {
-            options: Default::default(),
-            maybe_modifier: Default::default(),
-        }
     }
 }
 
@@ -125,17 +108,18 @@ impl ConfigurationLoaderEnv {
         self.set_key_separator(key_separator);
         self
     }
-}
 
-impl ConfigurationLoader for ConfigurationLoaderEnv {
-    fn set_modifier(&mut self, modifier: BoxedLoaderModifierFn) {
+    pub fn set_modifier(&mut self, modifier: BoxedLoaderModifierFn) {
         self.maybe_modifier = Some(modifier)
     }
 
-    fn maybe_get_modifier(&self) -> Option<&BoxedLoaderModifierFn> {
-        self.maybe_modifier.as_ref()
+    pub fn with_modifier(mut self, modifier: BoxedLoaderModifierFn) -> Self {
+        self.set_modifier(modifier);
+        self
     }
+}
 
+impl ConfigurationLoader for ConfigurationLoaderEnv {
     fn name(&self) -> &'static str {
         NAME
     }
@@ -197,7 +181,7 @@ impl ConfigurationLoader for ConfigurationLoaderEnv {
                     result.insert(plugin_name, key_value);
                 }
             });
-        Ok(result
+        let mut result = result
             .into_iter()
             .map(|(plugin_name, contents)| {
                 (
@@ -207,7 +191,12 @@ impl ConfigurationLoader for ConfigurationLoaderEnv {
                         .with_contents(contents),
                 )
             })
-            .collect())
+            .collect();
+        if let Some(ref modifier) = self.maybe_modifier {
+            // TODO: logging
+            modifier(url, &mut result)?;
+        }
+        Ok(result)
     }
 }
 
