@@ -1,3 +1,36 @@
+//! Custom configuration loader with [Fn].
+//!
+//! ### Example
+//! ```rust
+//! use std::collections::HashMap;
+//! use url::Url;
+//! use plugx_config::entity::ConfigurationEntity;
+//! use plugx_config::loader::{ConfigurationLoader, closure::ConfigurationLoaderFn};
+//!
+//! let url_scheme = "xyz";
+//! let loader_name = "my-custom-loader";
+//! let loader_fn = move |url: &Url, maybe_whitelist: Option<&[String]>| {
+//!     // TODO: check `url` and get my own options
+//!     let mut result = HashMap::new();
+//!     // TODO: check whitelist
+//!     // load configurations
+//!     // for example I load configuration for plugin named `foo`:
+//!     let entity = ConfigurationEntity::new(url.clone(), "foo", loader_name)
+//!         // If you do not set format here, `Configuration` struct will try to guess it later:
+//!         .with_format("yml")
+//!         // If you do not set contents here, the default value will be `plugx_input::Input::empty_map()`
+//!         .with_contents("hello: world");
+//!     result.insert("foo".into(), entity);
+//!     Ok(result)
+//! };
+//! let url = "xyz:///my/own/path?my_option=value".parse().unwrap();
+//! let loader = ConfigurationLoaderFn::new(loader_name, Box::new(loader_fn), url_scheme);
+//! let loaded = loader.try_load(&url, None).unwrap();
+//! assert!(loaded.contains_key("foo"));
+//! ```
+//!
+//! See [loader] documentation to known how loaders work.
+
 use crate::loader::BoxedLoaderModifierFn;
 use crate::{
     entity::ConfigurationEntity,
@@ -9,6 +42,7 @@ use std::{
 };
 use url::Url;
 
+/// A `|&Url, Option<&[String]>| -> Result<HashMap<_, _>, ConfigurationLoadError>` [Fn]
 pub type BoxedLoaderFn = Box<
     dyn Fn(
             &Url,
@@ -17,8 +51,8 @@ pub type BoxedLoaderFn = Box<
         + Send
         + Sync,
 >;
-pub type BoxedCheckUrlFn = Box<dyn Fn(&Url) -> Result<(), ConfigurationLoadError> + Send + Sync>;
 
+/// Builder struct.
 pub struct ConfigurationLoaderFn {
     name: &'static str,
     loader: BoxedLoaderFn,
@@ -99,25 +133,5 @@ impl ConfigurationLoader for ConfigurationLoaderFn {
         maybe_whitelist: Option<&[String]>,
     ) -> Result<HashMap<String, ConfigurationEntity>, ConfigurationLoadError> {
         (self.loader)(url, maybe_whitelist)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::logging::enable_logging;
-
-    #[test]
-    fn load() {
-        enable_logging();
-        // let mut l = ConfigurationLoaderEnv::new("FOO")
-        //     .unwrap()
-        //     .with_key_separator("_");
-        // println!("{l:?}");
-        // let loaded = l.try_load().unwrap();
-        // println!("{loaded:#?}");
-        // for (p, r) in loaded {
-        //     println!("{p}: {:?}\n\n\n\n", r.deserialize());
-        // }
     }
 }
