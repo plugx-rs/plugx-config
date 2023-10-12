@@ -12,6 +12,9 @@ categories = ["configuration", "cfg"]
 keywords = ["configuration", "env"]
 include = ["src/**/*.rs", "Cargo.toml", "LICENSE", "README.md"]
 
+[package.metadata.docs.rs]
+all-features = true
+
 [dependencies]
 thiserror = "1.0.40"
 anyhow = "1.0.71"
