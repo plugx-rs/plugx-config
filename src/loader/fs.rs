@@ -1,19 +1,78 @@
-use crate::loader::BoxedLoaderModifierFn;
+//! File system configuration loader.
+//!
+//! This is only usable if you enabled `fs` Cargo feature.
+//!
+//! ### Example
+//! ```rust
+//! use std::{fs, collections::HashMap};
+//! use tempdir::TempDir;
+//! use plugx_config::loader::{ConfigurationLoader, fs::{ConfigurationLoaderFs, SkippbaleErrorKind}};
+//! use url::Url;
+//!
+//! // Create a temporary directory containing `foo.json`, `bar.yaml`, and `baz.toml`:
+//! let tmp_dir = TempDir::new("fs-example").unwrap();
+//! let foo = tmp_dir.path().join("foo.json");
+//! fs::write(&foo, "{\"hello\": \"world\"}").unwrap();
+//! let bar = tmp_dir.path().join("bar.yaml");
+//! fs::write(&bar, "hello: world").unwrap();
+//! let baz = tmp_dir.path().join("baz.toml");
+//! fs::write(&baz, "hello = \"world\"").unwrap();
+//! let url = Url::try_from(format!("file://{}", tmp_dir.path().to_str().unwrap()).as_str()).unwrap();
+//!
+//! let mut loader = ConfigurationLoaderFs::new();
+//! // You could set some skippable errors here.
+//! // For example if you're loading contents of one file that may potentially not exists:
+//! // loader.add_skippable_error(SkippbaleErrorKind::NotFound)
+//!
+//! let modifier = |url: &Url, loaded: &mut HashMap<String, _>| {
+//!     // Modify loaded configuration if needed
+//!     Ok(())
+//! };
+//! loader.set_modifier(Box::new(modifier)); // Note that setting a modifier is optional
+//!
+//! // Load all configurations inside directory:
+//! let loaded = loader.try_load(&url, None).unwrap();
+//! assert!(loaded.contains_key("foo") && loaded.contains_key("bar") && loaded.contains_key("baz"));
+//! let foo = loaded.get("foo").unwrap();
+//! assert_eq!(foo.maybe_format(), Some(&"json".to_string()));
+//! let bar = loaded.get("bar").unwrap();
+//! assert_eq!(bar.maybe_contents(), Some(&"hello: world".to_string()));
+//!
+//! // Only load `foo` and `bar`:
+//! let whitelist = ["foo".into(), "bar".into()].to_vec();
+//! let loaded = loader.try_load(&url, Some(&whitelist)).unwrap();
+//! assert!(!loaded.contains_key("baz"));
+//!
+//! // Load just one file:
+//! let qux = tmp_dir.path().join("qux.env");
+//! fs::write(&qux, "hello=\"world\"").unwrap();
+//! let url = Url::try_from(format!("file://{}", qux.to_str().unwrap()).as_str()).unwrap();
+//! let loaded = loader.try_load(&url, None).unwrap();
+//! assert!(loaded.contains_key("qux"));
+//! ```
+//!
+//! See [loader] documentation to known how loaders work.
+
 use crate::{
     entity::ConfigurationEntity,
     loader,
-    loader::{ConfigurationLoadError, ConfigurationLoader},
+    loader::{BoxedLoaderModifierFn, ConfigurationLoadError, ConfigurationLoader},
 };
 use anyhow::anyhow;
 use cfg_if::cfg_if;
 use serde::Deserialize;
-use std::fmt::{Debug, Formatter};
-use std::{collections::HashMap, fs, io, path::PathBuf};
+use std::{
+    collections::HashMap,
+    fmt::{Debug, Formatter},
+    fs, io,
+    path::PathBuf,
+};
 use url::Url;
 
 const NAME: &str = "File";
 const SCHEME_LIST: &[&str] = &["fs", "file"];
 
+/// Loads configurations from filesystem.
 #[derive(Default)]
 pub struct ConfigurationLoaderFs {
     options: ConfigurationLoaderFsOptions,
@@ -22,7 +81,7 @@ pub struct ConfigurationLoaderFs {
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]
-pub struct ConfigurationLoaderFsOptions {
+struct ConfigurationLoaderFsOptions {
     skippable: Vec<SkippbaleErrorKind>,
 }
 
@@ -34,6 +93,7 @@ impl ConfigurationLoaderFsOptions {
     }
 }
 
+/// Supported skippable errors when loading filesystem contents.
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum SkippbaleErrorKind {
@@ -67,6 +127,7 @@ impl Debug for ConfigurationLoaderFs {
     }
 }
 
+#[doc(hidden)]
 pub mod utils {
     use super::*;
     use std::path::Path;
@@ -101,7 +162,7 @@ pub mod utils {
     }
 
     #[inline]
-    pub fn get_entity_list(
+    pub(super) fn get_entity_list(
         url: &Url,
         options: &ConfigurationLoaderFsOptions,
         maybe_whitelist: Option<&[String]>,
@@ -231,15 +292,6 @@ pub mod utils {
     }
 }
 
-// impl Default for ConfigurationLoaderFs {
-//     fn default() -> Self {
-//         Self {
-//             options: Default::default(),
-//             maybe_modifier: Default::default(),
-//         }
-//     }
-// }
-
 impl ConfigurationLoaderFs {
     pub fn new() -> Self {
         Default::default()
@@ -309,26 +361,5 @@ impl ConfigurationLoader for ConfigurationLoaderFs {
             .into_iter()
             .map(|entity| (entity.plugin_name().clone(), entity))
             .collect())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::logging::enable_logging;
-    use anyhow::anyhow;
-
-    #[test]
-    fn load() {
-        enable_logging();
-        //
-        // let l = ConfigurationLoaderFs::from_source("test/fs").unwrap();
-        // let loaded = l.try_load().unwrap();
-        // for (p, r) in loaded {
-        //     println!(
-        //         "{p}: {:?}\n\n\n\n",
-        //         r.deserialize().map_err(|x| format!("{:#}", anyhow!(x)))
-        //     );
-        // }
     }
 }
