@@ -31,4 +31,4 @@ jobs:
       - name: Test current source
         run: cargo test --all-features -- --nocapture
       - name: Clippy
-        run: cargo clippy --all-features
+        run: cargo clippy --no-deps --all-features
