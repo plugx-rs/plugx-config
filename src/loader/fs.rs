@@ -214,14 +214,14 @@ pub mod utils {
                     Ok(Vec::new())
                 }
             } else {
-                Err(ConfigurationLoadError::InvalidSource {
+                Err(ConfigurationLoadError::InvalidUrl {
                     loader: NAME.to_string(),
                     url: url.to_string(),
                     error: anyhow!("Could not parse plugin name/format"),
                 })
             }
         } else if path.exists() {
-            Err(ConfigurationLoadError::InvalidSource {
+            Err(ConfigurationLoadError::InvalidUrl {
                 loader: NAME.to_string(),
                 url: url.to_string(),
                 error: anyhow!("This is not pointing to a directory or regular file"),
