@@ -212,7 +212,7 @@ impl ConfigurationLoader for ConfigurationLoaderEnv {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::logging::{enable_logging, info};
+    use crate::logging::enable_logging;
 
     #[test]
     fn load() {
@@ -228,6 +228,7 @@ mod tests {
         assert_eq!(a.maybe_contents(), Some(&"B..C=\"D\"".to_string()));
 
         let loaded = loader.try_load(&url, Some(&["x".into()])).unwrap();
+        println!("Loaded {loaded:?}");
         assert!(loaded.is_empty());
     }
 }
