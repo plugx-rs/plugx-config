@@ -40,6 +40,7 @@
 //! assert!(result.get("foo").is_some());
 //! assert!(result.get("qux").is_none());
 //! ```
+
 use crate::{
     entity::ConfigurationEntity,
     loader::{self, BoxedLoaderModifierFn, ConfigurationLoadError, ConfigurationLoader},
@@ -211,7 +212,7 @@ impl ConfigurationLoader for ConfigurationLoaderEnv {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::logging::enable_logging;
+    use crate::logging::{enable_logging, info};
 
     #[test]
     fn load() {
