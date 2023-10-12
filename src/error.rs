@@ -24,9 +24,9 @@ pub enum ConfigurationError {
 }
 
 impl ConfigurationError {
-    pub fn is_retryable(&self) -> bool {
+    pub fn is_skippable(&self) -> bool {
         if let Self::Load { source, .. } = self {
-            source.is_dispensable()
+            source.is_skippable()
         } else {
             false
         }

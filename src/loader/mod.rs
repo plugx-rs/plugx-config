@@ -104,25 +104,10 @@ pub fn deserialize_query_string<T: DeserializeOwned>(
     })
 }
 
-#[cfg(feature = "qs")]
-pub fn deserialize_query_string_and_trim_url<T: DeserializeOwned>(
-    loader_name: &'static str,
-    url: &mut Url,
-) -> Result<T, ConfigurationLoadError> {
-    deserialize_query_string(loader_name, url).map(|result| {
-        url.set_query(None);
-        result
-    })
-}
-
 impl ConfigurationLoadError {
-    pub fn is_dispensable(&self) -> bool {
-        if let Self::Load {
-            skippable: dispensable,
-            ..
-        } = self
-        {
-            *dispensable
+    pub fn is_skippable(&self) -> bool {
+        if let Self::Load { skippable, .. } = self {
+            *skippable
         } else {
             false
         }
