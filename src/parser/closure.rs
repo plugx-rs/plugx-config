@@ -111,7 +111,7 @@ impl ConfigurationParser for ConfigurationParserFn {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::logging::{enable_logging, info};
+    use crate::logging::enable_logging;
     use std::collections::HashMap;
 
     #[test]
