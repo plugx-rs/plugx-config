@@ -305,7 +305,7 @@ impl Configuration {
                 };
                 load_result
                     .or_else(|error| {
-                        if skip_retryable && error.is_dispensable() {
+                        if skip_retryable && error.is_skippable() {
                             Ok(HashMap::new())
                         } else {
                             Err(error)
