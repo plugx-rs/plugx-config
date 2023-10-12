@@ -1,10 +1,70 @@
-use crate::parser::{BoxedModifierFn, ConfigurationParser, MODIFIER_FN_DEBUG};
+//! Custom configuration parser with [Fn].
+//!
+//! ### Example
+//! In the following example we implement a complete [HJSON](https://hjson.github.io/) parser.
+//!
+//! ```rust
+//! use plugx_config::{
+//!     error::ConfigurationParserError,
+//!     parser::{ConfigurationParser, closure::ConfigurationParserFn}
+//! };
+//!
+//! let parser_fn = |bytes: &[u8]| {
+//!     deser_hjson::from_slice(bytes).map_err(|error| ConfigurationParserError::Parse {
+//!         data: String::from_utf8_lossy(bytes).to_string(),
+//!         parser: "HJSON".to_string(),
+//!         supported_format_list: ["hjson".into()].into(),
+//!         source: error.into(),
+//!     })
+//! };
+//!
+//! let parser = ConfigurationParserFn::new("hjson", Box::new(parser_fn));
+//! let bytes = br#"
+//! {
+//!     hello: ["w", "o", "l", "d"]
+//!     foo: {
+//!         bar: {
+//!             baz: Qux
+//!             abc: 3.14
+//!         }
+//!         xyz: false
+//!     }
+//! }
+//! "#;
+//! let parsed = parser.try_parse(bytes).unwrap();
+//! assert!(
+//!     parsed.map_ref().unwrap().len() == 2 &&
+//!     parsed.map_ref().unwrap().contains_key("foo") &&
+//!     parsed.map_ref().unwrap().contains_key("hello")
+//! );
+//! let foo = parsed.map_ref().unwrap().get("foo").unwrap();
+//! assert!(
+//!     foo.map_ref().unwrap().len() == 2 &&
+//!     foo.map_ref().unwrap().contains_key("bar") &&
+//!     foo.map_ref().unwrap().contains_key("xyz")
+//! );
+//! let bar = foo.map_ref().unwrap().get("bar").unwrap();
+//! assert_eq!(bar.map_ref().unwrap().get("baz").unwrap(), &"Qux".into());
+//! assert_eq!(bar.map_ref().unwrap().get("abc").unwrap(), &3.14.into());
+//! let xyz = foo.map_ref().unwrap().get("xyz").unwrap();
+//! assert_eq!(xyz, &false.into());
+//! let list = ["w", "o", "l", "d"].into();
+//! assert_eq!(parsed.map_ref().unwrap().get("hello").unwrap(), &list);
+//! ```
+//!
+
+use crate::error::ConfigurationParserError;
+use crate::parser::{BoxedModifierFn, ConfigurationParser};
 use plugx_input::Input;
 use std::fmt::{Debug, Display, Formatter};
 
-pub type BoxedParserFn = Box<dyn Fn(&[u8]) -> anyhow::Result<Input> + Send + Sync>;
+/// A `|&[u8]| -> Result<Input, ConfigurationParserError>` [Fn] to parse contents.
+pub type BoxedParserFn =
+    Box<dyn Fn(&[u8]) -> Result<Input, ConfigurationParserError> + Send + Sync>;
+/// A `|&[u8]| -> Option<bool>` [Fn] to validate contents.
 pub type BoxedValidatorFn = Box<dyn Fn(&[u8]) -> Option<bool> + Send + Sync>;
 
+/// Builder struct.
 pub struct ConfigurationParserFn {
     parser: BoxedParserFn,
     validator: BoxedValidatorFn,
@@ -26,16 +86,7 @@ impl Display for ConfigurationParserFn {
 impl Debug for ConfigurationParserFn {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ConfigurationParserFn")
-            .field(
-                "parser",
-                &stringify!(Box<dyn Fn(&[u8]) -> anyhow::Result<Input> + Send + Sync>),
-            )
-            .field(
-                "validator",
-                &stringify!(Box<dyn Fn(&[u8]) -> Option<bool> + Send + Sync>),
-            )
             .field("supported_format_list", &self.supported_format_list)
-            .field("maybe_modifier", &MODIFIER_FN_DEBUG)
             .finish()
     }
 }
@@ -91,82 +142,19 @@ impl ConfigurationParserFn {
 }
 
 impl ConfigurationParser for ConfigurationParserFn {
-    fn maybe_get_modifier(&self) -> Option<&BoxedModifierFn> {
-        self.maybe_modifier.as_ref()
-    }
-
     fn supported_format_list(&self) -> Vec<String> {
         self.supported_format_list.clone()
     }
 
-    fn parse(&self, bytes: &[u8]) -> anyhow::Result<Input> {
-        (self.parser)(bytes)
+    fn try_parse(&self, bytes: &[u8]) -> Result<Input, ConfigurationParserError> {
+        let mut result = (self.parser)(bytes)?;
+        if let Some(ref modifier) = self.maybe_modifier {
+            modifier(bytes, &mut result)?;
+        }
+        Ok(result)
     }
 
     fn is_format_supported(&self, bytes: &[u8]) -> Option<bool> {
         (self.validator)(bytes)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::logging::enable_logging;
-    use std::collections::HashMap;
-
-    #[test]
-    fn xml() {
-        enable_logging();
-
-        // let mut xml_format = InputFormatFn::new()
-        //     .unwrap()
-        //     .with_serializer(Box::new(|input: &Input| {
-        //         serde_xml_rs::to_string(input)
-        //             .map(|string| string.into_bytes())
-        //             .map_err(|error| anyhow!(error))
-        //     }))
-        //     .with_deserializer(Box::new(|bytes: &[u8]| {
-        //         let string = String::from_utf8(bytes.to_vec()).map_err(|error| anyhow!(error))?;
-        //         serde_xml_rs::from_str(string.as_str()).map_err(|error| anyhow!(error))
-        //     }))
-        //     .with_name_list(["xml"].to_vec());
-        // let mut input: Input = HashMap::<String, Input>::new().into();
-        // let mut copy = input.clone();
-        // // <foo/>
-        // input
-        //     .map_mut()
-        //     .unwrap()
-        //     .insert("foo".to_string(), Input::from("p p p "));
-        // // copy = input.clone();
-        // // // <foo><bar><foo/></bar></foo>
-        // // input
-        // //     .map_mut()
-        // //     .unwrap()
-        // //     .get_mut("foo")
-        // //     .unwrap()
-        // //     .map_mut()
-        // //     .unwrap()
-        // //     .insert("bar".to_string(), copy.clone());
-        // // copy = input.clone();
-        // // // <foo><bar><baz>value</baz><foo/></bar></foo>
-        // // input
-        // //     .map_mut()
-        // //     .unwrap()
-        // //     .get_mut("foo")
-        // //     .unwrap()
-        // //     .map_mut()
-        // //     .unwrap()
-        // //     .get_mut("bar")
-        // //     .unwrap()
-        // //     .map_mut()
-        // //     .unwrap()
-        // //     .insert("baz".to_string(), Input::from("p p p "));
-        // let xml_text = String::from_utf8(xml_format.serialize(&input).unwrap()).unwrap();
-        // println!("{xml_text:#?}");
-        // let new_input = xml_format
-        //     .deserialize("<?xml version=\"1.0\" encoding=\"utf-8\"?><foo>salam</foo>".as_bytes())
-        //     .unwrap();
-        // println!("{new_input:#?}");
-        // assert_eq!(input, new_input);
     }
 }
