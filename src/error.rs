@@ -2,6 +2,7 @@
 
 pub use crate::loader::ConfigurationLoadError;
 pub use crate::parser::ConfigurationParserError;
+use url::Url;
 
 /// Main error wrapper.
 #[derive(Debug, thiserror::Error)]
@@ -13,10 +14,10 @@ pub enum ConfigurationError {
         source: ConfigurationLoadError,
     },
     /// Errors from [ConfigurationParserError].
-    #[error("Error in parsing `{plugin_name}` configuration from `{configuration_source}`")]
+    #[error("Error in parsing `{plugin_name}` configuration from `{url}`")]
     Parse {
         plugin_name: String,
-        configuration_source: String,
+        url: Url,
         source: ConfigurationParserError,
     },
     /// Errors from [plugx_input::validation::InputValidateError]

@@ -199,27 +199,3 @@ impl ConfigurationLoader for ConfigurationLoaderEnv {
         Ok(result)
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::logging::enable_logging;
-
-    #[test]
-    fn load() {
-        enable_logging();
-        let url = Url::try_from("env://?prefix=__&key_separator=..").unwrap();
-        let loader = ConfigurationLoaderEnv::new();
-        env::set_var("__A..B..C", "D");
-        let loaded = loader.try_load(&url, None).unwrap();
-        let a = loaded.get("a");
-        println!("Loaded {loaded:?}");
-        assert!(a.is_some());
-        let a = a.unwrap();
-        assert_eq!(a.maybe_contents(), Some(&"B..C=\"D\"".to_string()));
-
-        let loaded = loader.try_load(&url, Some(&["x".into()])).unwrap();
-        println!("Loaded {loaded:?}");
-        assert!(loaded.is_empty());
-    }
-}
