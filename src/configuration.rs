@@ -274,7 +274,7 @@ impl Configuration {
     pub fn forget_parsed(&mut self) {
         self.states.iter_mut().for_each(|(_, list)| {
             list.iter_mut()
-                .for_each(|configuration| *configuration.maybe_parsed_mut() = None)
+                .for_each(|configuration| *configuration.maybe_parsed_contents_mut() = None)
         })
     }
 }
@@ -328,13 +328,14 @@ impl Configuration {
             .iter_mut()
             .try_for_each(|(plugin_name, configuration_list)| {
                 configuration_list.iter_mut().try_for_each(|configuration| {
-                    let parsed = configuration.parse(&self.parser_list).map_err(|error| {
-                        ConfigurationError::Parse {
-                            plugin_name: plugin_name.to_string(),
-                            configuration_source: configuration.url().to_string(),
-                            source: error,
-                        }
-                    })?;
+                    let parsed =
+                        configuration
+                            .parse_contents(&self.parser_list)
+                            .map_err(|error| ConfigurationError::Parse {
+                                plugin_name: plugin_name.to_string(),
+                                configuration_source: configuration.url().to_string(),
+                                source: error,
+                            })?;
                     configuration.set_parsed_contents(parsed);
                     Ok(())
                 })
@@ -354,12 +355,12 @@ impl Configuration {
                 let mut first = Input::new_map();
                 configuration_list
                     .iter()
-                    .filter(|configuration| configuration.maybe_parsed().is_some())
+                    .filter(|configuration| configuration.maybe_parsed_contents().is_some())
                     .for_each(|configuration| {
                         plugx_input::merge::merge_with_positions(
                             &mut first,
                             plugx_input::position::new().new_with_key(plugin_name),
-                            configuration.maybe_parsed().unwrap(),
+                            configuration.maybe_parsed_contents().unwrap(),
                             plugx_input::position::new().new_with_key(configuration.url().as_str()),
                         )
                     });

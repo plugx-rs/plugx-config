@@ -1,9 +1,43 @@
+//! Configuration entity for each plugin.
+//!
+//! ### Example usage
+//! ```rust
+//! use std::env::set_var;
+//! use plugx_input::Input;
+//! use url::Url;
+//! use plugx_config::{
+//!     entity::ConfigurationEntity,
+//!     loader::{ConfigurationLoader, env::ConfigurationLoaderEnv},
+//!     parser::{ConfigurationParser, env::ConfigurationParserEnv},
+//! };
+//!
+//! let url = "env://".parse::<Url>().expect("Valid URL");
+//! let plugin_name = "foo";
+//! let loader = ConfigurationLoaderEnv::new().with_prefix("MY_APP_NAME_").with_key_separator("__");
+//! set_var("MY_APP_NAME_FOO__BAR__BAZ", "3.14");
+//! set_var("MY_APP_NAME_FOO__QUX", "false");
+//! let loaded = loader.try_load(&url, None).unwrap();
+//! let foo_entity = loaded.get(plugin_name).unwrap();
+//! // Above `loader` actually does this:
+//! let loader_name = loader.name();
+//! let mut foo_entity2 = ConfigurationEntity::new(url.clone(), plugin_name, loader_name)
+//!     .with_format("env")
+//!     .with_contents("BAR__BAZ=\"3.14\"\nQUX=\"false\"");
+//!
+//! assert_eq!(&foo_entity2, foo_entity);
+//!
+//! // We can pass a list of `ConfigurationParser` to an entity to parse its contents.
+//! let parser = ConfigurationParserEnv::new().with_key_separator("__");
+//! let parser_list: Vec<Box<dyn ConfigurationParser>> = vec![Box::new(parser)];
+//! let input = foo_entity2.parse_contents_mut(&parser_list).unwrap();
+//! assert_eq!(input.map_ref().unwrap().get("qux").unwrap(), &false.into());
+//! ```
 use crate::parser::{ConfigurationParser, ConfigurationParserError};
-
 use plugx_input::Input;
 use std::fmt::{Display, Formatter};
 use url::Url;
 
+/// A configuration entity for each plugin.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ConfigurationEntity {
     loader_name: String,
@@ -15,6 +49,12 @@ pub struct ConfigurationEntity {
 }
 
 impl ConfigurationEntity {
+    /// Constructs a new [ConfigurationEntity].
+    ///
+    /// It's better to set the format (via [Self::set_format] or [Self::with_format]) and if we
+    /// don't and try to parse its  contents, All parsers that support
+    /// [ConfigurationParser::is_format_supported] method try to validate the
+    /// contents to pick it up for future parsing!
     pub fn new<P, L>(url: Url, plugin_name: P, loader_name: L) -> Self
     where
         P: AsRef<str>,
@@ -89,14 +129,16 @@ impl ConfigurationEntity {
         &mut self.maybe_contents
     }
 
-    pub fn maybe_parsed(&self) -> Option<&Input> {
+    pub fn maybe_parsed_contents(&self) -> Option<&Input> {
         self.maybe_parsed.as_ref()
     }
 
-    pub fn maybe_parsed_mut(&mut self) -> &mut Option<Input> {
+    pub fn maybe_parsed_contents_mut(&mut self) -> &mut Option<Input> {
         &mut self.maybe_parsed
     }
 
+    /// We have to call it after calling [Self::set_contents] or [Self::with_contents] and If no
+    /// contents is set, It yields [None] too.
     pub fn guess_format(&self, parser_list: &[Box<dyn ConfigurationParser>]) -> Option<String> {
         let contents = self.maybe_contents()?;
         let bytes = contents.as_bytes();
@@ -110,7 +152,7 @@ impl ConfigurationEntity {
         }
     }
 
-    pub fn parse(
+    pub fn parse_contents(
         &self,
         parser_list: &[Box<dyn ConfigurationParser>],
     ) -> Result<Input, ConfigurationParserError> {
@@ -135,10 +177,22 @@ impl ConfigurationEntity {
             Err(ConfigurationParserError::ParserNotFound)
         }
     }
+
+    pub fn parse_contents_mut(
+        &mut self,
+        parser_list: &[Box<dyn ConfigurationParser>],
+    ) -> Result<&mut Input, ConfigurationParserError> {
+        let input = self.parse_contents(parser_list)?;
+        self.set_parsed_contents(input);
+        Ok(self
+            .maybe_parsed_contents_mut()
+            .as_mut()
+            .expect("input has been set!"))
+    }
 }
 
 impl Display for ConfigurationEntity {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        Display::fmt(&self.url, f)
+        f.write_str(format!("Configuration entity for {}", self.plugin_name).as_str())
     }
 }

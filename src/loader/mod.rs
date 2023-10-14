@@ -1,8 +1,8 @@
 //! Configuration loader trait and implementations.
 //!
 //! A configuration loader only loads contents of one or more plugins. No parsing is done here.
-//! The result is just a hashmap with keys as plugin names (in lowercase) and [ConfigurationEntity]
-//! as keys.
+//! The result is just a hashmap with plugin names (in lowercase) as keys and [ConfigurationEntity]
+//! as values.
 //! A loader also should try to set contents format for each plugin.
 //! For example [fs] (that implements [ConfigurationLoader]) that loads
 //! configurations from filesystem, guesses content formats from file extensions.

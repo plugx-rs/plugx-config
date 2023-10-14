@@ -55,8 +55,7 @@
 
 use crate::{
     entity::ConfigurationEntity,
-    loader,
-    loader::{BoxedLoaderModifierFn, ConfigurationLoadError, ConfigurationLoader},
+    loader::{self, BoxedLoaderModifierFn, ConfigurationLoadError, ConfigurationLoader},
 };
 use anyhow::anyhow;
 use cfg_if::cfg_if;

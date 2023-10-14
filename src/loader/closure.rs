@@ -29,12 +29,11 @@
 //! assert!(loaded.contains_key("foo"));
 //! ```
 //!
-//! See [loader] documentation to known how loaders work.
+//! See [crate::loader] documentation to known how loaders work.
 
-use crate::loader::BoxedLoaderModifierFn;
 use crate::{
     entity::ConfigurationEntity,
-    loader::{ConfigurationLoadError, ConfigurationLoader},
+    loader::{BoxedLoaderModifierFn, ConfigurationLoadError, ConfigurationLoader},
 };
 use std::{
     collections::HashMap,
