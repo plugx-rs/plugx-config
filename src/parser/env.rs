@@ -44,7 +44,6 @@ use crate::{
     parser::{BoxedModifierFn, ConfigurationParser},
 };
 use anyhow::{anyhow, bail};
-use cfg_if::cfg_if;
 use plugx_input::{position, position::InputPosition, Input};
 use std::fmt::{Debug, Display, Formatter};
 
@@ -162,10 +161,7 @@ impl ConfigurationParserEnv {
     }
 
     pub fn set_prefix<P: AsRef<str>>(&mut self, prefix: P) {
-        let (prefix, key_separator) =
-            Self::fix(Some(prefix.as_ref()), Some(self.key_separator.as_str()));
-        self.prefix = prefix;
-        self.key_separator = key_separator;
+        self.prefix = prefix.as_ref().to_string();
     }
 
     pub fn with_prefix<P: AsRef<str>>(mut self, prefix: P) -> Self {
@@ -174,10 +170,7 @@ impl ConfigurationParserEnv {
     }
 
     pub fn set_key_separator<K: AsRef<str>>(&mut self, key_separator: K) {
-        let (prefix, key_separator) =
-            Self::fix(Some(self.prefix.as_str()), Some(key_separator.as_ref()));
-        self.prefix = prefix;
-        self.key_separator = key_separator;
+        self.key_separator = key_separator.as_ref().to_string();
     }
 
     pub fn with_key_separator<K: AsRef<str>>(mut self, key_separator: K) -> Self {
@@ -192,63 +185,6 @@ impl ConfigurationParserEnv {
     pub fn with_modifier(mut self, modifier: BoxedModifierFn) -> Self {
         self.set_modifier(modifier);
         self
-    }
-
-    fn fix(maybe_prefix: Option<&str>, maybe_key_separator: Option<&str>) -> (String, String) {
-        let key_separator = if let Some(key_separator) = maybe_key_separator {
-            let trimmed_key_separator = key_separator.trim().to_string();
-            if key_separator != trimmed_key_separator {
-                cfg_if! {
-                    if #[cfg(feature = "tracing")] {
-                        tracing::trace!(
-                            parser = NAME.to_string(),
-                            old = key_separator,
-                            new = trimmed_key_separator,
-                            "updated environment-variable key separator"
-                        );
-                    } else if #[cfg(feature = "logging")] {
-                        log::trace!(
-                            "parser={:?} old={:?} new={:?} message=\"updated environment-variable key separator\"",
-                            NAME.to_string(),
-                            key_separator,
-                            trimmed_key_separator,
-                        );
-                    }
-                }
-            };
-            trimmed_key_separator
-        } else {
-            DEFAULT_KEY_SEPARATOR.to_string()
-        };
-        let prefix = if let Some(prefix) = maybe_prefix {
-            let mut trimmed_prefix = prefix.trim().to_string();
-            if !key_separator.is_empty() && !trimmed_prefix.ends_with(&key_separator) {
-                trimmed_prefix += key_separator.as_str();
-            }
-            if prefix != trimmed_prefix {
-                cfg_if! {
-                    if #[cfg(feature = "tracing")] {
-                        tracing::trace!(
-                            parser = NAME.to_string(),
-                            old = prefix,
-                            new = trimmed_prefix,
-                            "updated environment-variable prefix"
-                        );
-                    } else if #[cfg(feature = "logging")] {
-                        log::trace!(
-                            "parser={:?}, old={:?} new={:?} message=\"updated environment-variable prefix\"",
-                            NAME.to_string(),
-                            prefix,
-                            trimmed_prefix,
-                        );
-                    }
-                }
-            };
-            trimmed_prefix
-        } else {
-            String::new()
-        };
-        (prefix, key_separator)
     }
 }
 
