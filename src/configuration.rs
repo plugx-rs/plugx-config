@@ -2,11 +2,12 @@ use crate::{
     entity::ConfigurationEntity,
     error::{ConfigurationError, ConfigurationLoadError},
     loader::ConfigurationLoader,
-    parser::{self, ConfigurationParser},
+    parser::ConfigurationParser,
 };
 use anyhow::anyhow;
 use plugx_input::{
-    definition::InputDefinition, position::InputPosition, validation::InputValidateError, Input,
+    position::InputPosition, validation::definition::InputDefinition,
+    validation::InputValidateError, Input,
 };
 use std::{
     collections::HashMap,
@@ -32,14 +33,14 @@ impl Default for Configuration {
     fn default() -> Self {
         let mut new = Self::new();
         new.parser_list = vec![
-            #[cfg(feature = "env-parser")]
-            Box::<parser::env::ConfigurationParserEnv>::default(),
+            #[cfg(feature = "env")]
+            Box::<crate::parser::env::ConfigurationParserEnv>::default(),
             #[cfg(feature = "json")]
-            Box::<parser::json::ConfigurationParserJson>::default(),
+            Box::<crate::parser::json::ConfigurationParserJson>::default(),
             #[cfg(feature = "toml")]
-            Box::<parser::toml::ConfigurationParserToml>::default(),
+            Box::<crate::parser::toml::ConfigurationParserToml>::default(),
             #[cfg(feature = "yaml")]
-            Box::<parser::yaml::ConfigurationParserYaml>::default(),
+            Box::<crate::parser::yaml::ConfigurationParserYaml>::default(),
         ];
         new
     }
@@ -271,6 +272,15 @@ impl Configuration {
     pub fn with_whitelist<P: AsRef<str>>(mut self, whitelist: Vec<P>) -> Self {
         self.set_whitelist(whitelist);
         self
+    }
+
+    pub fn add_to_whitelist<P: AsRef<str>>(&mut self, plugin_name: P) {
+        let plugin_name = plugin_name.as_ref().to_lowercase();
+        if let Some(whitelist) = self.maybe_whitelist.as_mut() {
+            whitelist.push(plugin_name);
+        } else {
+            self.maybe_whitelist = Some(Vec::from([plugin_name]));
+        }
     }
 }
 
