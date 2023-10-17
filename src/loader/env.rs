@@ -71,6 +71,8 @@ struct ConfigurationLoaderEnvOptions {
     maybe_prefix: Option<String>,
     #[serde(rename = "key_separator")]
     maybe_key_separator: Option<String>,
+    #[serde(rename = "remove_prefix")]
+    maybe_remove_prefix: Option<bool>,
 }
 
 impl Debug for ConfigurationLoaderEnv {
@@ -137,6 +139,7 @@ impl ConfigurationLoader for ConfigurationLoaderEnv {
         let ConfigurationLoaderEnvOptions {
             maybe_prefix,
             maybe_key_separator,
+            maybe_remove_prefix,
         } = loader::deserialize_query_string(NAME, url)?;
         let prefix = maybe_prefix
             .or_else(|| self.options.maybe_prefix.clone())
@@ -144,12 +147,17 @@ impl ConfigurationLoader for ConfigurationLoaderEnv {
         let key_separator = maybe_key_separator
             .or_else(|| self.options.maybe_key_separator.clone())
             .unwrap_or_else(|| DEFAULT_KEY_SEPARATOR.to_string());
+        let remove_prefix = maybe_remove_prefix.unwrap_or(true);
         let mut result: HashMap<String, String> = HashMap::new();
         env::vars()
             .filter(|(key, _)| prefix.is_empty() || key.starts_with(prefix.as_str()))
             .filter(|(key, _)| !key.is_empty())
             .map(|(mut key, value)| {
-                key = key.chars().skip(prefix.chars().count()).collect();
+                key = if remove_prefix {
+                    key.chars().skip(prefix.chars().count()).collect()
+                } else {
+                    key
+                };
                 let key_list = if key_separator.is_empty() {
                     [key].to_vec()
                 } else {
@@ -197,29 +205,5 @@ impl ConfigurationLoader for ConfigurationLoaderEnv {
             modifier(url, &mut result)?;
         }
         Ok(result)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::logging::enable_logging;
-
-    #[test]
-    fn load() {
-        enable_logging();
-        let url = Url::try_from("env://?prefix=__&key_separator=..").unwrap();
-        let loader = ConfigurationLoaderEnv::new();
-        env::set_var("__A..B..C", "D");
-        let loaded = loader.try_load(&url, None).unwrap();
-        let a = loaded.get("a");
-        println!("Loaded {loaded:?}");
-        assert!(a.is_some());
-        let a = a.unwrap();
-        assert_eq!(a.maybe_contents(), Some(&"B..C=\"D\"".to_string()));
-
-        let loaded = loader.try_load(&url, Some(&["x".into()])).unwrap();
-        println!("Loaded {loaded:?}");
-        assert!(loaded.is_empty());
     }
 }

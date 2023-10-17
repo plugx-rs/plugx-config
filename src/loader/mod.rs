@@ -40,26 +40,25 @@ pub type BoxedLoaderModifierFn = Box<
 pub enum ConfigurationLoadError {
     /// An entity could not be found.
     #[error("{loader} configuration loader could not found configuration `{url}`")]
-    NotFound { loader: String, url: String },
+    NotFound { loader: String, url: Url },
     /// Did not have enough permissions to read the contents.
     #[error("{loader} configuration loader has no access to load configuration from `{url}`")]
-    NoAccess { loader: String, url: String },
+    NoAccess { loader: String, url: Url },
     /// Got timeout when reading the contents.
     #[error(
         "{loader} configuration loader reached timeout `{timeout_in_seconds}s` to load `{url}`"
     )]
     Timeout {
         loader: String,
-        url: String,
+        url: Url,
         timeout_in_seconds: usize,
     },
     /// The provided URL is invalid.
-    #[error("{loader} configuration loader got invalid source `{url}`")]
+    #[error("{loader} configuration loader got invalid URL `{url}`")]
     InvalidUrl {
         loader: String,
         url: String,
-        #[source]
-        error: anyhow::Error,
+        source: anyhow::Error,
     },
     /// Could not found URL scheme.
     #[error("Could not found configuration loader for scheme {scheme}")]
@@ -68,7 +67,7 @@ pub enum ConfigurationLoadError {
     #[error("{loader} configuration loader found duplicate configurations `{url}/{plugin}.({format_1}|{format_2})`")]
     Duplicate {
         loader: String,
-        url: String,
+        url: Url,
         plugin: String,
         format_1: String,
         format_2: String,
@@ -80,13 +79,13 @@ pub enum ConfigurationLoadError {
     #[error("{loader} configuration loader could not {description} `{url}`")]
     Load {
         loader: String,
-        url: String,
+        url: Url,
         description: String,
         source: anyhow::Error,
         skippable: bool,
     },
     #[error("Could not acquire lock for configuration loader with url `{url}`")]
-    AcquireLock { url: String },
+    AcquireLock { url: Url },
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }
@@ -103,13 +102,13 @@ pub trait ConfigurationLoader: Send + Sync + Debug {
 
     /// Main method that actually loads configurations.
     ///
-    /// * Checks the `source` and detects its own options from it.
+    /// * Checks the `url` and detects its own options from it.
     /// * Checks whitelist to load just provided plugins configurations.
     /// * Attempts to load configurations.
     /// * Tries to set format for each [ConfigurationEntity].
     fn try_load(
         &self,
-        source: &Url,
+        url: &Url,
         maybe_whitelist: Option<&[String]>,
     ) -> Result<HashMap<String, ConfigurationEntity>, ConfigurationLoadError>;
 }
@@ -126,7 +125,7 @@ pub fn deserialize_query_string<T: DeserializeOwned>(
     serde_qs::from_str(url.query().unwrap_or_default()).map_err(|error| {
         ConfigurationLoadError::InvalidUrl {
             loader: loader_name.to_string(),
-            error: error.into(),
+            source: error.into(),
             url: url.to_string(),
         }
     })

@@ -172,7 +172,7 @@ pub mod utils {
                 let skippable = options.contains(error.kind());
                 ConfigurationLoadError::Load {
                     loader: NAME.to_string(),
-                    url: url.to_string(),
+                    url: url.clone(),
                     description: "load directory file list".to_string(),
                     source: error.into(),
                     skippable,
@@ -181,9 +181,11 @@ pub mod utils {
             let mut plugins: HashMap<&String, &String> = HashMap::with_capacity(list.len());
             for (plugin_name, format, _) in list.iter() {
                 if let Some(other_format) = plugins.get(plugin_name) {
+                    let mut url = url.clone();
+                    url.set_query(None);
                     return Err(ConfigurationLoadError::Duplicate {
                         loader: NAME.to_string(),
-                        url: url.to_string(),
+                        url,
                         plugin: plugin_name.to_string(),
                         format_1: other_format.to_string(),
                         format_2: format.to_string(),
@@ -216,19 +218,19 @@ pub mod utils {
                 Err(ConfigurationLoadError::InvalidUrl {
                     loader: NAME.to_string(),
                     url: url.to_string(),
-                    error: anyhow!("Could not parse plugin name/format"),
+                    source: anyhow!("Could not parse plugin name/format"),
                 })
             }
         } else if path.exists() {
             Err(ConfigurationLoadError::InvalidUrl {
                 loader: NAME.to_string(),
                 url: url.to_string(),
-                error: anyhow!("This is not pointing to a directory or regular file"),
+                source: anyhow!("This is not pointing to a directory or regular file"),
             })
         } else if options.contains(io::ErrorKind::NotFound) {
             Err(ConfigurationLoadError::Load {
                 loader: NAME.to_string(),
-                url: url.to_string(),
+                url: url.clone(),
                 description: "find path".to_string(),
                 source: anyhow!(io::Error::from(io::ErrorKind::NotFound)),
                 skippable: true,
@@ -236,7 +238,7 @@ pub mod utils {
         } else {
             Err(ConfigurationLoadError::NotFound {
                 loader: NAME.to_string(),
-                url: url.to_string(),
+                url: url.clone(),
             })
         }
     }
@@ -350,7 +352,7 @@ impl ConfigurationLoader for ConfigurationLoaderFs {
                 let skippable = options.contains(error.kind());
                 ConfigurationLoadError::Load {
                     loader: NAME.to_string(),
-                    url: entity.url().to_string(),
+                    url: entity.url().clone(),
                     description: "read entity file".to_string(),
                     source: error.into(),
                     skippable,

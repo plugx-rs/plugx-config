@@ -2,13 +2,17 @@ use crate::{
     entity::ConfigurationEntity,
     error::{ConfigurationError, ConfigurationLoadError},
     loader::ConfigurationLoader,
-    parser::{self, ConfigurationParser},
+    parser::ConfigurationParser,
 };
+use anyhow::anyhow;
+use plugx_input::validation::definition::InputDefinitionType;
 use plugx_input::{
-    definition::InputDefinition, position::InputPosition, validation::InputValidateError, Input,
+    position::InputPosition, validation::definition::InputDefinition,
+    validation::InputValidateError, Input,
 };
 use std::{
     collections::HashMap,
+    env::{self, VarError},
     sync::{Arc, RwLock},
 };
 use url::Url;
@@ -30,14 +34,20 @@ impl Default for Configuration {
     fn default() -> Self {
         let mut new = Self::new();
         new.parser_list = vec![
-            #[cfg(feature = "env-parser")]
-            Box::<parser::env::ConfigurationParserEnv>::default(),
+            #[cfg(feature = "env")]
+            Box::<crate::parser::env::ConfigurationParserEnv>::default(),
             #[cfg(feature = "json")]
-            Box::<parser::json::ConfigurationParserJson>::default(),
+            Box::<crate::parser::json::ConfigurationParserJson>::default(),
             #[cfg(feature = "toml")]
-            Box::<parser::toml::ConfigurationParserToml>::default(),
+            Box::<crate::parser::toml::ConfigurationParserToml>::default(),
             #[cfg(feature = "yaml")]
-            Box::<parser::yaml::ConfigurationParserYaml>::default(),
+            Box::<crate::parser::yaml::ConfigurationParserYaml>::default(),
+        ];
+        new.loader_list = vec![
+            #[cfg(feature = "env")]
+            Box::<crate::loader::env::ConfigurationLoaderEnv>::default(),
+            #[cfg(feature = "fs")]
+            Box::<crate::loader::fs::ConfigurationLoaderFs>::default(),
         ];
         new
     }
@@ -215,11 +225,48 @@ impl Configuration {
     where
         P: ConfigurationParser + 'static,
     {
-        self.parser_list.push(Box::new(parser));
+        self.add_boxed_parser(Box::new(parser));
+    }
+
+    pub fn with_boxed_parser(mut self, parser: Box<dyn ConfigurationParser>) -> Self {
+        self.add_boxed_parser(parser);
+        self
+    }
+
+    pub fn add_boxed_parser(&mut self, parser: Box<dyn ConfigurationParser>) {
+        self.parser_list.push(parser);
     }
 }
 
 impl Configuration {
+    pub fn load_whitelist_from_env<K: AsRef<str>>(
+        &mut self,
+        key: K,
+    ) -> Result<(), ConfigurationError> {
+        let whitelist = env::var(key.as_ref())
+            .map(|value| value.trim().to_lowercase())
+            .and_then(|value| {
+                if value.is_empty() {
+                    Err(VarError::NotPresent)
+                } else {
+                    Ok(value.split([' ', ',']).map(String::from).collect())
+                }
+            })
+            .map_err(|error| {
+                ConfigurationError::Other(anyhow!("Invalid key or the value is not set: {}", error))
+            })?;
+        self.set_whitelist(whitelist);
+        Ok(())
+    }
+
+    pub fn set_whitelist_from_env<K: AsRef<str>>(
+        mut self,
+        key: K,
+    ) -> Result<Self, ConfigurationError> {
+        self.load_whitelist_from_env(key)?;
+        Ok(self)
+    }
+
     pub fn set_whitelist<P: AsRef<str>>(&mut self, whitelist: Vec<P>) {
         self.maybe_whitelist = Some(
             whitelist
@@ -232,6 +279,15 @@ impl Configuration {
     pub fn with_whitelist<P: AsRef<str>>(mut self, whitelist: Vec<P>) -> Self {
         self.set_whitelist(whitelist);
         self
+    }
+
+    pub fn add_to_whitelist<P: AsRef<str>>(&mut self, plugin_name: P) {
+        let plugin_name = plugin_name.as_ref().to_lowercase();
+        if let Some(whitelist) = self.maybe_whitelist.as_mut() {
+            whitelist.push(plugin_name);
+        } else {
+            self.maybe_whitelist = Some(Vec::from([plugin_name]));
+        }
     }
 }
 
@@ -285,12 +341,9 @@ impl Configuration {
             .iter_mut()
             .try_for_each(|(url, maybe_loader)| {
                 let load_result = if let Some(loader) = maybe_loader {
-                    let loader =
-                        loader
-                            .try_write()
-                            .map_err(|_| ConfigurationLoadError::AcquireLock {
-                                url: url.to_string(),
-                            })?;
+                    let loader = loader
+                        .try_write()
+                        .map_err(|_| ConfigurationLoadError::AcquireLock { url: url.clone() })?;
                     loader.try_load(url, maybe_whitelist.map(|vector| vector.as_slice()))
                 } else if let Some(loader) = self
                     .loader_list
@@ -333,7 +386,7 @@ impl Configuration {
                             .parse_contents(&self.parser_list)
                             .map_err(|error| ConfigurationError::Parse {
                                 plugin_name: plugin_name.to_string(),
-                                configuration_source: configuration.url().to_string(),
+                                url: configuration.url().clone(),
                                 source: error,
                             })?;
                     configuration.set_parsed_contents(parsed);
@@ -373,7 +426,7 @@ impl Configuration {
 
     pub fn try_validate(
         &mut self,
-        definitions: &HashMap<String, InputDefinition>,
+        definitions: &HashMap<String, InputDefinitionType>,
     ) -> Result<(), InputValidateError> {
         self.merged
             .iter_mut()
@@ -381,7 +434,7 @@ impl Configuration {
                 if let Some(plugin_definitions) = definitions.get(plugin_name) {
                     plugx_input::validation::validate(
                         merged_configuration,
-                        plugin_definitions,
+                        &InputDefinition::new().with_definition_type(plugin_definitions.clone()),
                         Some(InputPosition::new().new_with_key(plugin_name)),
                     )
                 } else {
@@ -401,7 +454,7 @@ impl Configuration {
     pub fn try_load_parse_merge_validate(
         &mut self,
         skip_retryable: bool,
-        definitions: &HashMap<String, InputDefinition>,
+        definitions: &HashMap<String, InputDefinitionType>,
     ) -> Result<(), ConfigurationError> {
         self.try_load_parse_merge(skip_retryable)?;
         self.try_validate(definitions)
