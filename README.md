@@ -1,7 +1,7 @@
 # Plugin configuration manager (work-in-progress)
 [**Package**](https://crates.io/crates/plugx-config)   |   [**Documentation**](https://docs.rs/plugx-config)   |   [**Repository**](https://github.com/plugx-rs/plugx-config)
 
-```no_run
+```rust
 // In this example we're going to load our plugins' configurations from
 // a directory and environment-variables.
 // Here we have 4 plugins `foo`, `bar`, `baz`, and `qux`.
