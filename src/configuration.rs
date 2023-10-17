@@ -5,6 +5,7 @@ use crate::{
     parser::ConfigurationParser,
 };
 use anyhow::anyhow;
+use plugx_input::validation::definition::InputDefinitionType;
 use plugx_input::{
     position::InputPosition, validation::definition::InputDefinition,
     validation::InputValidateError, Input,
@@ -41,6 +42,12 @@ impl Default for Configuration {
             Box::<crate::parser::toml::ConfigurationParserToml>::default(),
             #[cfg(feature = "yaml")]
             Box::<crate::parser::yaml::ConfigurationParserYaml>::default(),
+        ];
+        new.loader_list = vec![
+            #[cfg(feature = "env")]
+            Box::<crate::loader::env::ConfigurationLoaderEnv>::default(),
+            #[cfg(feature = "fs")]
+            Box::<crate::loader::fs::ConfigurationLoaderFs>::default(),
         ];
         new
     }
@@ -419,7 +426,7 @@ impl Configuration {
 
     pub fn try_validate(
         &mut self,
-        definitions: &HashMap<String, InputDefinition>,
+        definitions: &HashMap<String, InputDefinitionType>,
     ) -> Result<(), InputValidateError> {
         self.merged
             .iter_mut()
@@ -427,7 +434,7 @@ impl Configuration {
                 if let Some(plugin_definitions) = definitions.get(plugin_name) {
                     plugx_input::validation::validate(
                         merged_configuration,
-                        plugin_definitions,
+                        &InputDefinition::new().with_definition_type(plugin_definitions.clone()),
                         Some(InputPosition::new().new_with_key(plugin_name)),
                     )
                 } else {
@@ -447,7 +454,7 @@ impl Configuration {
     pub fn try_load_parse_merge_validate(
         &mut self,
         skip_retryable: bool,
-        definitions: &HashMap<String, InputDefinition>,
+        definitions: &HashMap<String, InputDefinitionType>,
     ) -> Result<(), ConfigurationError> {
         self.try_load_parse_merge(skip_retryable)?;
         self.try_validate(definitions)

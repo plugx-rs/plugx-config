@@ -181,9 +181,11 @@ pub mod utils {
             let mut plugins: HashMap<&String, &String> = HashMap::with_capacity(list.len());
             for (plugin_name, format, _) in list.iter() {
                 if let Some(other_format) = plugins.get(plugin_name) {
+                    let mut url = url.clone();
+                    url.set_query(None);
                     return Err(ConfigurationLoadError::Duplicate {
                         loader: NAME.to_string(),
-                        url: url.clone(),
+                        url,
                         plugin: plugin_name.to_string(),
                         format_1: other_format.to_string(),
                         format_2: format.to_string(),
