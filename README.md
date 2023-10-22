@@ -2,6 +2,7 @@
 [**Package**](https://crates.io/crates/plugx-config)   |   [**Documentation**](https://docs.rs/plugx-config)   |   [**Repository**](https://github.com/plugx-rs/plugx-config)
 
 ## Demo
+#### Preparation of the demo
 In this example we're going to load our plugins' configurations from a directory and environment-variables.  
 Here we have four configuration files for four plugins `foo`, `bar`, `baz`, and `qux`. This is our example `etc` directory:
 ```shell
@@ -20,38 +21,41 @@ $ cat tests/etc/bar.json
 ```json
 {
   "sqlite": {
-    "recreate": true
+    "recreate": true,
+    "file": "/path/to/app.db"
   }
 }
 ```
+<br/>
+
 ```shell
 $ cat tests/etc/baz.toml
 ```
 ```toml
 [logging]
+level = "debug"
 output_serialize_format = "json"
 ```
+<br/>
+
 ```shell
 $ cat tests/etc/foo.env
 ```
 ```dotenv
 SERVER__PORT="8080" # listen port
 ```
+<br/>
+
 ```shell
 $ cat tests/etc/qux.yml
 ```
 ```yaml
 https:
   follow_redirects: false
-```
-Additionally we set four Environment-Variable for our plugins:
-```shell
-$ export APP_NAME__FOO__SERVER__ADDRESS=127.0.0.1
-$ export APP_NAME__BAR__SQLITE__FILE=/path/to/app.db
-$ export APP_NAME__BAZ__LOGGING__LEVEL=debug
-$ export APP_NAME__QUX__HTTPS__INSECURE=false
+  insecure: false
 ```
 
+#### Demo code
 ```rust
 use plugx_config::{
     Configuration,
@@ -61,11 +65,6 @@ use plugx_config::{
     }
 };
 use std::{env, fs, collections::HashMap};
-
-# env::set_var("APP_NAME__FOO__SERVER__ADDRESS", "127.0.0.1");
-# env::set_var("APP_NAME__BAR__SQLITE__FILE", "/path/to/app.db");
-# env::set_var("APP_NAME__BAZ__LOGGING__LEVEL", "debug");
-# env::set_var("APP_NAME__QUX__HTTPS__INSECURE", "false");
 
 let env_url: Url = "env://?prefix=APP_NAME__&key_separator=__"
     .parse()
@@ -90,7 +89,7 @@ configuration
     .iter()
     .for_each(|(plugin, config)| println!("{plugin}: {config}"));
 // Prints:
-//  foo: {"server": {"address": "127.0.0.1", "port": 8080}}
+//  foo: {"server": {"port": 8080}}
 //  baz: {"logging": {"output_serialize_format": "json", "level": "debug"}}
 //  bar: {"sqlite": {"file": "/path/to/app.db", "recreate": true}}
 //  qux: {"https": {"insecure": false, "follow_redirects": false}}
@@ -104,10 +103,11 @@ foo:
     server:
       definition:
         type: static_map
-        definitions:
+        definitions:         
           address:
             definition:
               type: ip
+            default: 127.0.0.1
           port:
             definition:
               type: integer

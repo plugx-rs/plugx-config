@@ -8,6 +8,7 @@ foo:
           address:
             definition:
               type: ip
+            default: 127.0.0.1
           port:
             definition:
               type: integer
