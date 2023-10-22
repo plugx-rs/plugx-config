@@ -1,0 +1,67 @@
+foo:
+  type: static_map
+  definitions:
+    server:
+      definition:
+        type: static_map
+        definitions:
+          address:
+            definition:
+              type: ip
+          port:
+            definition:
+              type: integer
+              range:
+                min: 1
+                max: 65535
+
+bar:
+  type: static_map
+  definitions:
+    sqlite:
+      definition:
+        type: static_map
+        definitions:
+          recreate:
+            definition:
+              type: boolean
+              default: true
+          file:
+            definition:
+              type: path
+              file_type: file
+              access:
+                - read
+                - write
+
+baz:
+  type: static_map
+  definitions:
+    logging:
+      definition:
+        type: static_map
+        definitions:
+          level:
+            definition:
+              type: log_level
+            default: info
+          output_serialize_format:
+            definition:
+              type: enum
+              items:
+                - json
+                - logfmt
+
+qux:
+  type: static_map
+  definitions:
+    https:
+      definition:
+        type: static_map
+        definitions:
+          follow_redirects:
+            definition:
+              type: boolean
+          insecure:
+            definition:
+              type: boolean

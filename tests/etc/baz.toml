@@ -1,0 +1,2 @@
+[logging]
+output_serialize_format = "json"
