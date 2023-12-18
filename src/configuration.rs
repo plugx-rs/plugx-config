@@ -359,7 +359,7 @@ impl Configuration {
                 load_result
                     .or_else(|error| {
                         if skip_retryable && error.is_skippable() {
-                            Ok(HashMap::new())
+                            Ok(Vec::new())
                         } else {
                             Err(error)
                         }
