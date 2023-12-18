@@ -24,7 +24,7 @@
 //! // For example if you're loading contents of one file that may potentially not exists:
 //! // loader.add_skippable_error(SkippbaleErrorKind::NotFound)
 //!
-//! let modifier = |url: &Url, loaded: &mut HashMap<String, _>| {
+//! let modifier = |url: &Url, loaded: &mut Vec<_>| {
 //!     // Modify loaded configuration if needed
 //!     Ok(())
 //! };
@@ -32,23 +32,23 @@
 //!
 //! // Load all configurations inside directory:
 //! let loaded = loader.try_load(&url, None).unwrap();
-//! assert!(loaded.contains_key("foo") && loaded.contains_key("bar") && loaded.contains_key("baz"));
-//! let foo = loaded.get("foo").unwrap();
+//! assert_eq!(loaded.len(), 3);
+//! let (_, foo) = loaded.iter().find(|(plugin_name, _)| plugin_name == "foo").expect("`foo` plugin config");
 //! assert_eq!(foo.maybe_format(), Some(&"json".to_string()));
-//! let bar = loaded.get("bar").unwrap();
+//! let (_, bar) = loaded.iter().find(|(plugin_name, _)| plugin_name == "bar").expect("`bar` plugin config");
 //! assert_eq!(bar.maybe_contents(), Some(&"hello: world".to_string()));
 //!
 //! // Only load `foo` and `bar`:
 //! let whitelist = ["foo".into(), "bar".into()].to_vec();
 //! let loaded = loader.try_load(&url, Some(&whitelist)).unwrap();
-//! assert!(!loaded.contains_key("baz"));
+//! assert_eq!(loaded.len(), 2);
 //!
 //! // Load just one file:
 //! let qux = tmp_dir.path().join("qux.env");
 //! fs::write(&qux, "hello=\"world\"").unwrap();
 //! let url = Url::try_from(format!("file://{}", qux.to_str().unwrap()).as_str()).unwrap();
 //! let loaded = loader.try_load(&url, None).unwrap();
-//! assert!(loaded.contains_key("qux"));
+//! assert_eq!(loaded.len(), 1);
 //! ```
 //!
 //! See [loader] documentation to known how loaders work.
@@ -332,8 +332,8 @@ impl ConfigurationLoaderFs {
 }
 
 impl ConfigurationLoader for ConfigurationLoaderFs {
-    fn name(&self) -> &'static str {
-        NAME
+    fn name(&self) -> String {
+        NAME.into()
     }
 
     fn scheme_list(&self) -> Vec<String> {
@@ -344,7 +344,7 @@ impl ConfigurationLoader for ConfigurationLoaderFs {
         &self,
         url: &Url,
         maybe_whitelist: Option<&[String]>,
-    ) -> Result<HashMap<String, ConfigurationEntity>, ConfigurationLoadError> {
+    ) -> Result<Vec<(String, ConfigurationEntity)>, ConfigurationLoadError> {
         let options = self.get_options(url)?;
         let mut entity_list = utils::get_entity_list(url, &options, maybe_whitelist)?;
         entity_list.iter_mut().try_for_each(|entity| {

@@ -19,7 +19,7 @@
 
 use crate::entity::ConfigurationEntity;
 use serde::de::DeserializeOwned;
-use std::{collections::HashMap, fmt::Debug};
+use std::fmt::Debug;
 use url::Url;
 
 pub mod closure;
@@ -30,7 +30,7 @@ pub mod fs;
 
 /// A modifier [Fn] that modifies loaded configurations (if needed).
 pub type BoxedLoaderModifierFn = Box<
-    dyn Fn(&Url, &mut HashMap<String, ConfigurationEntity>) -> Result<(), ConfigurationLoadError>
+    dyn Fn(&Url, &mut Vec<(String, ConfigurationEntity)>) -> Result<(), ConfigurationLoadError>
         + Send
         + Sync,
 >;
@@ -93,7 +93,7 @@ pub enum ConfigurationLoadError {
 /// A trait to load configurations for one or more plugins.
 pub trait ConfigurationLoader: Send + Sync + Debug {
     /// Name of the loader (for logging purposes).
-    fn name(&self) -> &'static str;
+    fn name(&self) -> String;
 
     /// List of URL schemes that this loader supports.
     ///
@@ -110,21 +110,21 @@ pub trait ConfigurationLoader: Send + Sync + Debug {
         &self,
         url: &Url,
         maybe_whitelist: Option<&[String]>,
-    ) -> Result<HashMap<String, ConfigurationEntity>, ConfigurationLoadError>;
+    ) -> Result<Vec<(String, ConfigurationEntity)>, ConfigurationLoadError>;
 }
 
 #[cfg(feature = "qs")]
 /// Checks query-string part of URL and tries to deserialize it to provided type.
 ///
-/// See supported syntax at [serde_qs].
+/// See supported syntax from [serde_qs].
 /// This function is only usable if `qs` Cargo feature is enabled.
 pub fn deserialize_query_string<T: DeserializeOwned>(
-    loader_name: &'static str,
+    loader_name: impl AsRef<str>,
     url: &Url,
 ) -> Result<T, ConfigurationLoadError> {
     serde_qs::from_str(url.query().unwrap_or_default()).map_err(|error| {
         ConfigurationLoadError::InvalidUrl {
-            loader: loader_name.to_string(),
+            loader: loader_name.as_ref().to_string(),
             source: error.into(),
             url: url.to_string(),
         }

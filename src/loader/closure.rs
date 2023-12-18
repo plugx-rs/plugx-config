@@ -11,7 +11,7 @@
 //! let loader_name = "my-custom-loader";
 //! let loader_fn = move |url: &Url, maybe_whitelist: Option<&[String]>| {
 //!     // TODO: check `url` and get my own options
-//!     let mut result = HashMap::new();
+//!     let mut result = Vec::new();
 //!     // TODO: check whitelist
 //!     // load configurations
 //!     // for example I load configuration for plugin named `foo`:
@@ -20,13 +20,13 @@
 //!         .with_format("yml")
 //!         // If you do not set contents here, the default value will be `plugx_input::Input::empty_map()`
 //!         .with_contents("hello: world");
-//!     result.insert("foo".into(), entity);
+//!     result.push(("foo".to_string(), entity));
 //!     Ok(result)
 //! };
 //! let url = "xyz:///my/own/path?my_option=value".parse().unwrap();
 //! let loader = ConfigurationLoaderFn::new(loader_name, Box::new(loader_fn), url_scheme);
 //! let loaded = loader.try_load(&url, None).unwrap();
-//! assert!(loaded.contains_key("foo"));
+//! assert!(loaded.len() == 1);
 //! ```
 //!
 //! See [crate::loader] documentation to known how loaders work.
@@ -35,10 +35,7 @@ use crate::{
     entity::ConfigurationEntity,
     loader::{BoxedLoaderModifierFn, ConfigurationLoadError, ConfigurationLoader},
 };
-use std::{
-    collections::HashMap,
-    fmt::{Debug, Formatter},
-};
+use std::fmt::{Debug, Formatter};
 use url::Url;
 
 /// A `|&Url, Option<&[String]>| -> Result<HashMap<_, _>, ConfigurationLoadError>` [Fn]
@@ -46,14 +43,14 @@ pub type BoxedLoaderFn = Box<
     dyn Fn(
             &Url,
             Option<&[String]>,
-        ) -> Result<HashMap<String, ConfigurationEntity>, ConfigurationLoadError>
+        ) -> Result<Vec<(String, ConfigurationEntity)>, ConfigurationLoadError>
         + Send
         + Sync,
 >;
 
 /// Builder struct.
 pub struct ConfigurationLoaderFn {
-    name: &'static str,
+    name: String,
     loader: BoxedLoaderFn,
     maybe_modifier: Option<BoxedLoaderModifierFn>,
     scheme_list: Vec<String>,
@@ -69,20 +66,20 @@ impl Debug for ConfigurationLoaderFn {
 }
 
 impl ConfigurationLoaderFn {
-    pub fn new<S: AsRef<str>>(name: &'static str, loader: BoxedLoaderFn, scheme: S) -> Self {
+    pub fn new<S: AsRef<str>, N: AsRef<str>>(name: N, loader: BoxedLoaderFn, scheme: S) -> Self {
         Self {
-            name,
+            name: name.as_ref().to_string(),
             loader,
             maybe_modifier: None,
             scheme_list: [scheme.as_ref().into()].into(),
         }
     }
 
-    pub fn set_name(&mut self, name: &'static str) {
-        self.name = name
+    pub fn set_name<N: AsRef<str>>(&mut self, name: N) {
+        self.name = name.as_ref().to_string()
     }
 
-    pub fn with_name(mut self, name: &'static str) -> Self {
+    pub fn with_name<N: AsRef<str>>(mut self, name: N) -> Self {
         self.set_name(name);
         self
     }
@@ -119,8 +116,8 @@ impl ConfigurationLoaderFn {
 }
 
 impl ConfigurationLoader for ConfigurationLoaderFn {
-    fn name(&self) -> &'static str {
-        self.name
+    fn name(&self) -> String {
+        self.name.clone()
     }
 
     fn scheme_list(&self) -> Vec<String> {
@@ -131,7 +128,7 @@ impl ConfigurationLoader for ConfigurationLoaderFn {
         &self,
         url: &Url,
         maybe_whitelist: Option<&[String]>,
-    ) -> Result<HashMap<String, ConfigurationEntity>, ConfigurationLoadError> {
+    ) -> Result<Vec<(String, ConfigurationEntity)>, ConfigurationLoadError> {
         let mut result = (self.loader)(url, maybe_whitelist)?;
         if let Some(ref modifier) = self.maybe_modifier {
             // TODO: logging

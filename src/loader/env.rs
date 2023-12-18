@@ -19,7 +19,7 @@
 //! // loader.set_prefix("MY_APP_NAME");
 //! // loader.set_separator("__");
 //!
-//! let modifier = |url: &Url, loaded: &mut HashMap<String, _>| {
+//! let modifier = |url: &Url, loaded: &mut Vec<_>| {
 //!     // Modify loaded configuration if needed
 //!     Ok(())
 //! };
@@ -28,17 +28,17 @@
 //! // We do not set `whitelist` so we're going to load all plugins configurations:
 //! let mut maybe_whitelist = None;
 //! let result = loader.try_load(&url, maybe_whitelist).unwrap();
-//! let foo = result.get("foo").unwrap();
+//! let (_, foo) = result.iter().find(|(plugin_name, _)| plugin_name == "foo").expect("`foo` plugin config");
 //! assert_eq!(foo.maybe_contents(), Some(&"B_A_R=\"Baz\"".to_string()));
-//! let qux = result.get("qux").unwrap();
+//! let (_, qux) = result.iter().find(|(plugin_name, _)| plugin_name == "qux").expect("`qux` plugin config");
 //! assert_eq!(qux.maybe_contents(), Some(&"ABC=\"XYZ\"".to_string()));
 //!
 //! // Only load (and not modify) `foo` plugin configurations:
 //! let whitelist = ["foo".to_string()].to_vec();
 //! maybe_whitelist = Some(whitelist.as_slice());
 //! let result = loader.try_load(&url, maybe_whitelist).unwrap();
-//! assert!(result.get("foo").is_some());
-//! assert!(result.get("qux").is_none());
+//! assert!(result.iter().find(|(plugin_name, _)| plugin_name == "foo").is_some());
+//! assert!(result.iter().find(|(plugin_name, _)| plugin_name == "qux").is_none());
 //! ```
 //!
 //! See [loader] documentation to known how loaders work.
@@ -48,8 +48,8 @@ use crate::{
     loader::{self, BoxedLoaderModifierFn, ConfigurationLoadError, ConfigurationLoader},
 };
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::{
-    collections::HashMap,
     env,
     fmt::{Debug, Formatter},
 };
@@ -154,8 +154,8 @@ impl ConfigurationLoaderEnv {
 }
 
 impl ConfigurationLoader for ConfigurationLoaderEnv {
-    fn name(&self) -> &'static str {
-        NAME
+    fn name(&self) -> String {
+        NAME.into()
     }
 
     /// In this case `["env"]`.
@@ -167,7 +167,7 @@ impl ConfigurationLoader for ConfigurationLoaderEnv {
         &self,
         url: &Url,
         maybe_whitelist: Option<&[String]>,
-    ) -> Result<HashMap<String, ConfigurationEntity>, ConfigurationLoadError> {
+    ) -> Result<Vec<(String, ConfigurationEntity)>, ConfigurationLoadError> {
         let ConfigurationLoaderEnvOptions {
             mut prefix,
             mut separator,
@@ -180,7 +180,7 @@ impl ConfigurationLoader for ConfigurationLoaderEnv {
             separator = self.options.separator.clone()
         }
         if self.options.strip_prefix != default::option::strip_prefix() {
-            strip_prefix = self.options.strip_prefix.clone()
+            strip_prefix = self.options.strip_prefix
         }
         if !separator.is_empty() && !prefix.is_empty() && !prefix.ends_with(separator.as_str()) {
             prefix += separator.as_str()

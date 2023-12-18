@@ -16,8 +16,7 @@
 //! set_var("MY_APP_NAME__FOO__BAR__BAZ", "3.14");
 //! set_var("MY_APP_NAME__FOO__QUX", "false");
 //! let loaded = loader.try_load(&url, None).unwrap();
-//! println!("{loaded:?}");
-//! let foo_entity = loaded.get(plugin_name).expect("`foo` value");
+//! let (_, foo_entity) = loaded.iter().find(|(plugin_name, _)| plugin_name == "foo").expect("`foo` plugin config");
 //! // Above `loader` actually does this:
 //! let loader_name = loader.name();
 //! let mut foo_entity2 = ConfigurationEntity::new(url.clone(), plugin_name, loader_name)
