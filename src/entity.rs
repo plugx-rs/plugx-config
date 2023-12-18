@@ -3,9 +3,8 @@
 //! ### Example usage
 //! ```rust
 //! use std::env::set_var;
-//! use plugx_input::Input;
-//! use url::Url;
 //! use plugx_config::{
+//!     ext::{url::Url, plugx_input::Input},
 //!     entity::ConfigurationEntity,
 //!     loader::{ConfigurationLoader, env::ConfigurationLoaderEnv},
 //!     parser::{ConfigurationParser, env::ConfigurationParserEnv},
@@ -13,11 +12,12 @@
 //!
 //! let url = "env://".parse::<Url>().expect("Valid URL");
 //! let plugin_name = "foo";
-//! let loader = ConfigurationLoaderEnv::new().with_prefix("MY_APP_NAME_").with_key_separator("__");
-//! set_var("MY_APP_NAME_FOO__BAR__BAZ", "3.14");
-//! set_var("MY_APP_NAME_FOO__QUX", "false");
+//! let loader = ConfigurationLoaderEnv::new().with_prefix("MY_APP_NAME").with_separator("__");
+//! set_var("MY_APP_NAME__FOO__BAR__BAZ", "3.14");
+//! set_var("MY_APP_NAME__FOO__QUX", "false");
 //! let loaded = loader.try_load(&url, None).unwrap();
-//! let foo_entity = loaded.get(plugin_name).unwrap();
+//! println!("{loaded:?}");
+//! let foo_entity = loaded.get(plugin_name).expect("`foo` value");
 //! // Above `loader` actually does this:
 //! let loader_name = loader.name();
 //! let mut foo_entity2 = ConfigurationEntity::new(url.clone(), plugin_name, loader_name)
@@ -30,7 +30,7 @@
 //! let parser = ConfigurationParserEnv::new().with_key_separator("__");
 //! let parser_list: Vec<Box<dyn ConfigurationParser>> = vec![Box::new(parser)];
 //! let input = foo_entity2.parse_contents_mut(&parser_list).unwrap();
-//! assert_eq!(input.map_ref().unwrap().get("qux").unwrap(), &false.into());
+//! assert_eq!(input.as_map().get("qux").expect("`qux` value"), &false.into());
 //! ```
 use crate::parser::{ConfigurationParser, ConfigurationParserError};
 use plugx_input::Input;

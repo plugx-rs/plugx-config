@@ -1,0 +1,65 @@
+foo:
+  type: static_map
+  items:
+    server:
+      schema:
+        type: static_map
+        items:
+          address:
+            schema:
+              type: ip
+            default: 127.0.0.1
+          port:
+            schema:
+              type: integer
+              range:
+                min: 1
+                max: 65535
+
+bar:
+  type: static_map
+  items:
+    sqlite:
+      schema:
+        type: static_map
+        items:
+          recreate:
+            schema:
+              type: boolean
+            default: true
+          file:
+            schema:
+              type: fs
+              maybe_path_type: file
+
+baz:
+  type: static_map
+  items:
+    logging:
+      schema:
+        type: static_map
+        items:
+          level:
+            schema:
+              type: log_level
+            default: info
+          output_serialize_format:
+            schema:
+              type: enum
+              items:
+                - json
+                - logfmt
+
+qux:
+  type: static_map
+  items:
+    https:
+      schema:
+        type: static_map
+        items:
+          follow_redirects:
+            schema:
+              type: boolean
+          insecure:
+            schema:
+              type: boolean

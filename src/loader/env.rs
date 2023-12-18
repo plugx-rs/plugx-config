@@ -9,15 +9,15 @@
 //! use url::Url;
 //! use plugx_config::loader::{ConfigurationLoader, env::ConfigurationLoaderEnv};
 //!
-//! set_var("MY_APP_NAME_FOO__B_A_R", "Baz");
-//! set_var("MY_APP_NAME_QUX__ABC", "XYZ");
+//! set_var("MY_APP_NAME__FOO__B_A_R", "Baz");
+//! set_var("MY_APP_NAME__QUX__ABC", "XYZ");
 //!
-//! let url = Url::try_from("env://?prefix=MY_APP_NAME_&key_separator=__").expect("A valid URL!");
+//! let url = Url::try_from("env://?prefix=MY_APP_NAME&separator=__").expect("A valid URL!");
 //!
 //! let mut loader = ConfigurationLoaderEnv::new();
-//! // You could set `prefix` and `key_separator` like this too:
-//! // loader.set_prefix("MY_APP_NAME_");
-//! // loader.set_key_separator("__");
+//! // You could set `prefix` and `separator` like this too:
+//! // loader.set_prefix("MY_APP_NAME");
+//! // loader.set_separator("__");
 //!
 //! let modifier = |url: &Url, loaded: &mut HashMap<String, _>| {
 //!     // Modify loaded configuration if needed
@@ -54,9 +54,7 @@ use std::{
     fmt::{Debug, Formatter},
 };
 use url::Url;
-
 const NAME: &str = "Environment-Variables";
-const DEFAULT_KEY_SEPARATOR: &str = "__";
 
 /// Loads configurations from Environment-Variables.
 #[derive(Default)]
@@ -65,14 +63,25 @@ pub struct ConfigurationLoaderEnv {
     maybe_modifier: Option<BoxedLoaderModifierFn>,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Deserialize)]
+#[serde(default)]
 struct ConfigurationLoaderEnvOptions {
     #[serde(rename = "prefix")]
-    maybe_prefix: Option<String>,
-    #[serde(rename = "key_separator")]
-    maybe_key_separator: Option<String>,
-    #[serde(rename = "remove_prefix")]
-    maybe_remove_prefix: Option<bool>,
+    prefix: String,
+    #[serde(rename = "separator")]
+    separator: String,
+    #[serde(rename = "strip_prefix")]
+    strip_prefix: bool,
+}
+
+impl Default for ConfigurationLoaderEnvOptions {
+    fn default() -> Self {
+        Self {
+            prefix: default::option::prefix(),
+            separator: default::option::separator(),
+            strip_prefix: default::option::strip_prefix(),
+        }
+    }
 }
 
 impl Debug for ConfigurationLoaderEnv {
@@ -80,6 +89,29 @@ impl Debug for ConfigurationLoaderEnv {
         f.debug_struct("ConfigurationLoaderEnv")
             .field("options", &self.options)
             .finish()
+    }
+}
+
+pub mod default {
+    pub mod option {
+        pub fn prefix() -> String {
+            let mut prefix = option_env!("CARGO_BIN_NAME").unwrap_or("").to_string();
+            if prefix.is_empty() {
+                prefix = option_env!("CARGO_CRATE_NAME").unwrap_or("").to_string();
+            }
+            if !prefix.is_empty() {
+                prefix += separator().as_str();
+            }
+            prefix
+        }
+
+        pub fn separator() -> String {
+            "__".to_string()
+        }
+
+        pub fn strip_prefix() -> bool {
+            true
+        }
     }
 }
 
@@ -91,7 +123,7 @@ impl ConfigurationLoaderEnv {
 
     /// Only loads keys with this prefix.
     pub fn set_prefix<P: AsRef<str>>(&mut self, prefix: P) {
-        self.options.maybe_prefix = Some(prefix.as_ref().to_string());
+        self.options.prefix = prefix.as_ref().to_string();
     }
 
     /// Only loads keys with this prefix.
@@ -101,13 +133,13 @@ impl ConfigurationLoaderEnv {
     }
 
     /// Used is separating plugin names.
-    pub fn set_key_separator<K: AsRef<str>>(&mut self, key_separator: K) {
-        self.options.maybe_key_separator = Some(key_separator.as_ref().to_string());
+    pub fn set_separator<S: AsRef<str>>(&mut self, separator: S) {
+        self.options.separator = separator.as_ref().to_string();
     }
 
     /// Used is separating plugin names.
-    pub fn with_key_separator<K: AsRef<str>>(mut self, key_separator: K) -> Self {
-        self.set_key_separator(key_separator);
+    pub fn with_separator<S: AsRef<str>>(mut self, separator: S) -> Self {
+        self.set_separator(separator);
         self
     }
 
@@ -137,40 +169,50 @@ impl ConfigurationLoader for ConfigurationLoaderEnv {
         maybe_whitelist: Option<&[String]>,
     ) -> Result<HashMap<String, ConfigurationEntity>, ConfigurationLoadError> {
         let ConfigurationLoaderEnvOptions {
-            maybe_prefix,
-            maybe_key_separator,
-            maybe_remove_prefix,
+            mut prefix,
+            mut separator,
+            mut strip_prefix,
         } = loader::deserialize_query_string(NAME, url)?;
-        let prefix = maybe_prefix
-            .or_else(|| self.options.maybe_prefix.clone())
-            .unwrap_or_default();
-        let key_separator = maybe_key_separator
-            .or_else(|| self.options.maybe_key_separator.clone())
-            .unwrap_or_else(|| DEFAULT_KEY_SEPARATOR.to_string());
-        let remove_prefix = maybe_remove_prefix.unwrap_or(true);
+        if self.options.prefix != default::option::prefix() {
+            prefix = self.options.prefix.clone()
+        }
+        if self.options.separator != default::option::separator() {
+            separator = self.options.separator.clone()
+        }
+        if self.options.strip_prefix != default::option::strip_prefix() {
+            strip_prefix = self.options.strip_prefix.clone()
+        }
+        if !separator.is_empty() && !prefix.is_empty() && !prefix.ends_with(separator.as_str()) {
+            prefix += separator.as_str()
+        }
         let mut result: HashMap<String, String> = HashMap::new();
         env::vars()
             .filter(|(key, _)| prefix.is_empty() || key.starts_with(prefix.as_str()))
-            .filter(|(key, _)| !key.is_empty())
             .map(|(mut key, value)| {
-                key = if remove_prefix {
-                    key.chars().skip(prefix.chars().count()).collect()
-                } else {
-                    key
-                };
-                let key_list = if key_separator.is_empty() {
+                if !prefix.is_empty() && strip_prefix {
+                    key = key.chars().skip(prefix.chars().count()).collect::<String>()
+                }
+                (key, value)
+            })
+            .filter(|(key, _)| !key.is_empty())
+            .map(|(key, value)| {
+                let key_list = if separator.is_empty() {
                     [key].to_vec()
                 } else {
-                    key.splitn(2, key_separator.as_str())
+                    key.splitn(2, separator.as_str())
                         .map(|key| key.to_string())
                         .collect()
                 };
                 (key_list, value)
             })
-            .filter(|(key_list, _)| key_list.len() > 1)
+            .filter(|(key_list, _)| !key_list[0].is_empty())
             .map(|(mut key_list, value)| {
                 let plugin_name = key_list.remove(0).to_lowercase();
-                let key = key_list.get(0).cloned().unwrap_or_default();
+                let key = if key_list.len() == 1 {
+                    key_list.remove(0)
+                } else {
+                    String::new()
+                };
                 (plugin_name, key, value)
             })
             .filter(|(_, key, _)| !key.is_empty())

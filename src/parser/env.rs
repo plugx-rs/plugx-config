@@ -19,23 +19,23 @@
 //! // parser.set_key_separator("__");
 //! let parsed: Input = parser.try_parse(bytes.as_slice()).unwrap();
 //! assert!(
-//!     parsed.map_ref().unwrap().len() == 2 &&
-//!     parsed.map_ref().unwrap().contains_key("foo") &&
-//!     parsed.map_ref().unwrap().contains_key("hello")
+//!     parsed.as_map().len() == 2 &&
+//!     parsed.as_map().contains_key("foo") &&
+//!     parsed.as_map().contains_key("hello")
 //! );
-//! let foo = parsed.map_ref().unwrap().get("foo").unwrap();
+//! let foo = parsed.as_map().get("foo").unwrap();
 //! assert!(
-//!     foo.map_ref().unwrap().len() == 2 &&
-//!     foo.map_ref().unwrap().contains_key("bar") &&
-//!     foo.map_ref().unwrap().contains_key("xyz")
+//!     foo.as_map().len() == 2 &&
+//!     foo.as_map().contains_key("bar") &&
+//!     foo.as_map().contains_key("xyz")
 //! );
-//! let bar = foo.map_ref().unwrap().get("bar").unwrap();
-//! assert_eq!(bar.map_ref().unwrap().get("baz").unwrap(), &"Qux".into());
-//! assert_eq!(bar.map_ref().unwrap().get("abc").unwrap(), &3.14.into());
-//! let xyz = foo.map_ref().unwrap().get("xyz").unwrap();
+//! let bar = foo.as_map().get("bar").unwrap();
+//! assert_eq!(bar.as_map().get("baz").unwrap(), &"Qux".into());
+//! assert_eq!(bar.as_map().get("abc").unwrap(), &3.14.into());
+//! let xyz = foo.as_map().get("xyz").unwrap();
 //! assert_eq!(xyz, &false.into());
 //! let list = ["w", "o", "l", "d"].into();
-//! assert_eq!(parsed.map_ref().unwrap().get("hello").unwrap(), &list);
+//! assert_eq!(parsed.as_map().get("hello").unwrap(), &list);
 //! ```
 //!
 
@@ -214,18 +214,15 @@ fn update_input_from_key_list(
             Input::from(value.clone())
         };
         let key = key_list[0].clone();
-        input.map_mut().unwrap().insert(key, value);
+        input.map_mut().insert(key, value);
         Ok(())
     } else {
         let (key, key_list) = key_list.split_first().unwrap();
         let position = position.new_with_key(key);
-        if !input.map_ref().unwrap().contains_key(key) {
-            input
-                .map_mut()
-                .unwrap()
-                .insert(key.clone(), Input::new_map());
+        if !input.as_map().contains_key(key) {
+            input.map_mut().insert(key.clone(), Input::new_map());
         }
-        let inner_input = input.map_mut().unwrap().get_mut(key).unwrap();
+        let inner_input = input.map_mut().get_mut(key).unwrap();
         if inner_input.is_map() {
             update_input_from_key_list(inner_input, key_list, value, position)
         } else {

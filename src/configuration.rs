@@ -5,10 +5,10 @@ use crate::{
     parser::ConfigurationParser,
 };
 use anyhow::anyhow;
-use plugx_input::validation::definition::InputDefinitionType;
 use plugx_input::{
-    position::InputPosition, validation::definition::InputDefinition,
-    validation::InputValidateError, Input,
+    position::InputPosition,
+    schema::{InputSchemaError, InputSchemaType},
+    Input,
 };
 use std::{
     collections::HashMap,
@@ -426,15 +426,14 @@ impl Configuration {
 
     pub fn try_validate(
         &mut self,
-        definitions: &HashMap<String, InputDefinitionType>,
-    ) -> Result<(), InputValidateError> {
+        schemas: &HashMap<String, InputSchemaType>,
+    ) -> Result<(), InputSchemaError> {
         self.merged
             .iter_mut()
             .try_for_each(|(plugin_name, merged_configuration)| {
-                if let Some(plugin_definitions) = definitions.get(plugin_name) {
-                    plugx_input::validation::validate(
+                if let Some(schema) = schemas.get(plugin_name) {
+                    schema.validate(
                         merged_configuration,
-                        &InputDefinition::new().with_definition_type(plugin_definitions.clone()),
                         Some(InputPosition::new().new_with_key(plugin_name)),
                     )
                 } else {
@@ -454,10 +453,10 @@ impl Configuration {
     pub fn try_load_parse_merge_validate(
         &mut self,
         skip_retryable: bool,
-        definitions: &HashMap<String, InputDefinitionType>,
+        schemas: &HashMap<String, InputSchemaType>,
     ) -> Result<(), ConfigurationError> {
         self.try_load_parse_merge(skip_retryable)?;
-        self.try_validate(definitions)
+        self.try_validate(schemas)
             .map_err(|source| ConfigurationError::Validate { source })
     }
 }

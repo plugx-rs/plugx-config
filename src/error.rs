@@ -24,7 +24,7 @@ pub enum ConfigurationError {
     #[error(transparent)]
     Validate {
         #[from]
-        source: plugx_input::validation::InputValidateError,
+        source: plugx_input::schema::InputSchemaError,
     },
     #[error(transparent)]
     Other(#[from] anyhow::Error),
