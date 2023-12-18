@@ -1,16 +1,16 @@
 foo:
   type: static_map
-  definitions:
+  items:
     server:
-      definition:
+      schema:
         type: static_map
-        definitions:
+        items:
           address:
-            definition:
+            schema:
               type: ip
             default: 127.0.0.1
           port:
-            definition:
+            schema:
               type: integer
               range:
                 min: 1
@@ -18,36 +18,33 @@ foo:
 
 bar:
   type: static_map
-  definitions:
+  items:
     sqlite:
-      definition:
+      schema:
         type: static_map
-        definitions:
+        items:
           recreate:
-            definition:
+            schema:
               type: boolean
-              default: true
+            default: true
           file:
-            definition:
-              type: path
-              file_type: file
-              access:
-                - read
-                - write
+            schema:
+              type: fs
+              maybe_path_type: file
 
 baz:
   type: static_map
-  definitions:
+  items:
     logging:
-      definition:
+      schema:
         type: static_map
-        definitions:
+        items:
           level:
-            definition:
+            schema:
               type: log_level
             default: info
           output_serialize_format:
-            definition:
+            schema:
               type: enum
               items:
                 - json
@@ -55,14 +52,14 @@ baz:
 
 qux:
   type: static_map
-  definitions:
+  items:
     https:
-      definition:
+      schema:
         type: static_map
-        definitions:
+        items:
           follow_redirects:
-            definition:
+            schema:
               type: boolean
           insecure:
-            definition:
+            schema:
               type: boolean

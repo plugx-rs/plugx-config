@@ -15,7 +15,7 @@ fn smoke() {
     }
 
     use plugx_config::{ext::url::Url, Configuration};
-    use plugx_input::validation::definition::InputDefinitionType;
+    use plugx_input::schema::InputSchemaType;
     use std::{collections::HashMap, env, fs};
 
     env::set_var("APP_NAME__FOO__SERVER__ADDRESS", "127.0.0.1");
@@ -56,8 +56,7 @@ fn smoke() {
 
     let rules_yml =
         fs::read_to_string(env::current_dir().unwrap().join("tests").join("rules.yml")).unwrap();
-    let rules: HashMap<String, InputDefinitionType> =
-        serde_yaml::from_str(rules_yml.as_str()).unwrap();
+    let rules: HashMap<String, InputSchemaType> = serde_yaml::from_str(rules_yml.as_str()).unwrap();
     configuration
         .try_load_parse_merge_validate(apply_skippable_errors, &rules)
         .unwrap();

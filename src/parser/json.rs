@@ -25,23 +25,23 @@
 //! // parser.set_key_separator("__");
 //! let parsed: Input = parser.try_parse(bytes.as_slice()).unwrap();
 //! assert!(
-//!     parsed.map_ref().unwrap().len() == 2 &&
-//!     parsed.map_ref().unwrap().contains_key("foo") &&
-//!     parsed.map_ref().unwrap().contains_key("hello")
+//!     parsed.as_map().len() == 2 &&
+//!     parsed.as_map().contains_key("foo") &&
+//!     parsed.as_map().contains_key("hello")
 //! );
-//! let foo = parsed.map_ref().unwrap().get("foo").unwrap();
+//! let foo = parsed.as_map().get("foo").unwrap();
 //! assert!(
-//!     foo.map_ref().unwrap().len() == 2 &&
-//!     foo.map_ref().unwrap().contains_key("bar") &&
-//!     foo.map_ref().unwrap().contains_key("xyz")
+//!     foo.as_map().len() == 2 &&
+//!     foo.as_map().contains_key("bar") &&
+//!     foo.as_map().contains_key("xyz")
 //! );
-//! let bar = foo.map_ref().unwrap().get("bar").unwrap();
-//! assert_eq!(bar.map_ref().unwrap().get("baz").unwrap(), &"Qux".into());
-//! assert_eq!(bar.map_ref().unwrap().get("abc").unwrap(), &3.14.into());
-//! let xyz = foo.map_ref().unwrap().get("xyz").unwrap();
+//! let bar = foo.as_map().get("bar").unwrap();
+//! assert_eq!(bar.as_map().get("baz").unwrap(), &"Qux".into());
+//! assert_eq!(bar.as_map().get("abc").unwrap(), &3.14.into());
+//! let xyz = foo.as_map().get("xyz").unwrap();
 //! assert_eq!(xyz, &false.into());
 //! let list = ["w", "o", "l", "d"].into();
-//! assert_eq!(parsed.map_ref().unwrap().get("hello").unwrap(), &list);
+//! assert_eq!(parsed.as_map().get("hello").unwrap(), &list);
 //! ```
 //!
 

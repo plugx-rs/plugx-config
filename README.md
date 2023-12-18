@@ -61,7 +61,7 @@ use plugx_config::{
     Configuration,
     ext::{
         url::Url,
-        plugx_input::validation::definition::InputDefinitionType
+        plugx_input::schema::InputSchemaType,
     }
 };
 use std::{env, fs, collections::HashMap};
@@ -99,23 +99,23 @@ configuration
 let rules_yml = r#"
 foo:
   type: static_map
-  definitions:
+  items:
     server:
-      definition:
+      schema:
         type: static_map
-        definitions:         
+        items:         
           address:
-            definition:
+            schema:
               type: ip
             default: 127.0.0.1
           port:
-            definition:
+            schema:
               type: integer
               range:
                 min: 1
                 max: 65535
 "#;
-let rules: HashMap<String, InputDefinitionType> = serde_yaml::from_str(rules_yml).unwrap();
+let rules: HashMap<String, InputSchemaType> = serde_yaml::from_str(rules_yml).unwrap();
 configuration
     .try_load_parse_merge_validate(apply_skippable_errors, &rules) // Validates configurations too
     .unwrap();
