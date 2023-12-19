@@ -59,6 +59,7 @@ https:
 ```rust
 use plugx_config::{
     Configuration,
+    loader::{env::ConfigurationLoaderEnv, fs::ConfigurationLoaderFs},
     ext::{
         url::Url,
         plugx_input::schema::InputSchemaType,
@@ -80,7 +81,9 @@ let file_url: Url = format!("file://{current_dir}?skippable[0]=notfound") // Ski
     .parse()
     .expect("Valid URL");
 
-let mut configuration = Configuration::default().with_url(env_url).with_url(file_url);
+let mut configuration = Configuration::default()
+    .with_url_and_boxed_loader(env_url, Box::new(ConfigurationLoaderEnv::new()))
+    .with_url_and_boxed_loader(file_url, Box::new(ConfigurationLoaderFs::new()));
 let apply_skippable_errors = true;
 configuration.try_load_parse_merge(apply_skippable_errors).unwrap();
 // Print all configurations:

@@ -14,7 +14,11 @@ fn smoke() {
         }
     }
 
-    use plugx_config::{ext::url::Url, Configuration};
+    use plugx_config::{
+        ext::url::Url,
+        loader::{env::ConfigurationLoaderEnv, fs::ConfigurationLoaderFs},
+        Configuration,
+    };
     use plugx_input::schema::InputSchemaType;
     use std::{collections::HashMap, env, fs};
 
@@ -38,8 +42,8 @@ fn smoke() {
         .expect("Valid URL");
 
     let mut configuration = Configuration::default()
-        .with_url(env_url)
-        .with_url(file_url);
+        .with_url_and_loader(env_url, ConfigurationLoaderEnv::new())
+        .with_url_and_loader(file_url, ConfigurationLoaderFs::new());
     let apply_skippable_errors = true;
     configuration
         .try_load_parse_merge(apply_skippable_errors)

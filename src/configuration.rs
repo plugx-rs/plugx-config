@@ -13,16 +13,14 @@ use plugx_input::{
 use std::{
     collections::HashMap,
     env::{self, VarError},
-    sync::{Arc, RwLock},
 };
 use url::Url;
 
 #[derive(Debug)]
 pub struct Configuration {
     parser_list: Vec<Box<dyn ConfigurationParser>>,
-    loader_list: Vec<Box<dyn ConfigurationLoader>>,
     #[allow(clippy::type_complexity)]
-    url_list: Vec<(Url, Option<Arc<RwLock<Box<dyn ConfigurationLoader>>>>)>,
+    loader_list: Vec<(Url, Box<dyn ConfigurationLoader>)>,
     states: HashMap<String, Vec<ConfigurationEntity>>,
     merged: HashMap<String, Input>,
     maybe_whitelist: Option<Vec<String>>,
@@ -43,12 +41,6 @@ impl Default for Configuration {
             #[cfg(feature = "yaml")]
             Box::<crate::parser::yaml::ConfigurationParserYaml>::default(),
         ];
-        new.loader_list = vec![
-            #[cfg(feature = "env")]
-            Box::<crate::loader::env::ConfigurationLoaderEnv>::default(),
-            #[cfg(feature = "fs")]
-            Box::<crate::loader::fs::ConfigurationLoaderFs>::default(),
-        ];
         new
     }
 }
@@ -56,159 +48,68 @@ impl Default for Configuration {
 impl Configuration {
     pub fn new() -> Self {
         Self {
-            parser_list: Default::default(),
-            loader_list: Default::default(),
-            url_list: Default::default(),
-            states: Default::default(),
-            merged: Default::default(),
-            maybe_whitelist: Default::default(),
-            forget_loaded: Default::default(),
-            forget_parsed: Default::default(),
+            ..Default::default()
         }
     }
 }
 
 impl Configuration {
-    pub fn with_url<S>(mut self, url: S) -> Self
-    where
-        S: Into<Url>,
-    {
-        self.add_url(url);
-        self
-    }
-
-    pub fn add_url<S>(&mut self, url: S)
-    where
-        S: Into<Url>,
-    {
-        let url = url.into();
-        if !self.has_url(url.clone()) {
-            self.url_list.push((url, None));
-        }
-    }
-
-    pub fn has_url<S>(&mut self, url: S) -> bool
-    where
-        S: Into<Url>,
-    {
-        let url = url.into();
-        self.url_list
+    pub fn has_url(&mut self, url: &Url) -> bool {
+        self.loader_list
             .iter()
-            .find(|(inner_url, _)| inner_url == &url)
-            .map(|_| true)
-            .unwrap_or_default()
+            .any(|(inner_url, _)| inner_url == url)
     }
 
-    pub fn with_url_and_loader<S, L>(self, url: S, loader: L) -> Self
+    pub fn with_url_and_loader<L>(self, url: Url, loader: L) -> Self
     where
-        S: Into<Url>,
         L: ConfigurationLoader + 'static,
     {
         self.with_url_and_boxed_loader(url, Box::new(loader))
     }
 
-    pub fn add_url_and_loader<S, L>(&mut self, url: S, loader: L)
+    pub fn add_url_and_loader<L>(&mut self, url: Url, loader: L)
     where
-        S: Into<Url>,
         L: ConfigurationLoader + 'static,
     {
         self.add_url_and_boxed_loader(url, Box::new(loader))
     }
 
-    pub fn with_url_and_boxed_loader<S>(
+    pub fn with_url_and_boxed_loader(
         mut self,
-        url: S,
+        url: Url,
         loader: Box<dyn ConfigurationLoader>,
-    ) -> Self
-    where
-        S: Into<Url>,
-    {
+    ) -> Self {
         self.add_url_and_boxed_loader(url, loader);
         self
     }
 
-    pub fn add_url_and_boxed_loader<S>(&mut self, url: S, loader: Box<dyn ConfigurationLoader>)
-    where
-        S: Into<Url>,
-    {
-        let url = url.into();
-        if !self.has_url(url.clone()) {
-            self.url_list
-                .push((url, Some(Arc::new(RwLock::new(loader)))));
-        }
+    pub fn add_url_and_boxed_loader(&mut self, url: Url, loader: Box<dyn ConfigurationLoader>) {
+        self.loader_list.push((url, loader));
     }
 
-    pub fn remove_url_and_loader<S>(&mut self, url: S) -> bool
-    where
-        S: Into<Url>,
-    {
-        let url = url.into();
-        self.url_list
-            .iter_mut()
-            .position(|(inner_url, _)| inner_url == &url)
-            .map(|index| {
-                self.url_list.remove(index);
-                true
-            })
-            .unwrap_or_default()
-    }
-
-    pub fn take_boxed_loader<S>(&mut self, url: S) -> Option<Box<dyn ConfigurationLoader>>
-    where
-        S: Into<Url>,
-    {
-        let url = url.into();
-        if let Some(index) = self
-            .url_list
-            .iter_mut()
-            .position(|(inner_url, _)| inner_url == &url)
+    pub fn remove_url(&mut self, url: &Url) -> bool {
+        let mut result = false;
+        while let Some(index) = self
+            .loader_list
+            .iter()
+            .position(|(inner_url, _)| inner_url == url)
         {
-            let (_, maybe_loader) = self.url_list.remove(index);
-            maybe_loader
-                .map(|loader| {
-                    Arc::into_inner(loader)
-                        .map(|loader| loader.into_inner().ok())
-                        .unwrap_or_default()
-                })
-                .unwrap_or_default()
+            self.loader_list.remove(index);
+            result = true;
+        }
+        result
+    }
+
+    pub fn take_boxed_loader(&mut self, url: &Url) -> Option<Box<dyn ConfigurationLoader>> {
+        if let Some(index) = self
+            .loader_list
+            .iter()
+            .position(|(inner_url, _)| inner_url == url)
+        {
+            Some(self.loader_list.swap_remove(index).1)
         } else {
             None
         }
-    }
-
-    pub fn get_boxed_loader<S>(&self, url: S) -> Option<Arc<RwLock<Box<dyn ConfigurationLoader>>>>
-    where
-        S: Into<Url>,
-    {
-        let url = url.into();
-        self.url_list
-            .iter()
-            .find(|(inner_url, _)| inner_url == &url)
-            .map(|(_, loader)| loader.clone())
-            .unwrap_or_default()
-    }
-
-    pub fn with_generic_loader<L>(self, loader: L) -> Self
-    where
-        L: ConfigurationLoader + 'static,
-    {
-        self.with_generic_boxed_loader(Box::new(loader))
-    }
-
-    pub fn add_generic_loader<L>(&mut self, loader: L)
-    where
-        L: ConfigurationLoader + 'static,
-    {
-        self.add_generic_boxed_loader(Box::new(loader))
-    }
-
-    pub fn with_generic_boxed_loader(mut self, loader: Box<dyn ConfigurationLoader>) -> Self {
-        self.add_generic_boxed_loader(loader);
-        self
-    }
-
-    pub fn add_generic_boxed_loader(&mut self, loader: Box<dyn ConfigurationLoader>) {
-        self.loader_list.push(loader);
     }
 }
 
@@ -337,43 +238,26 @@ impl Configuration {
 impl Configuration {
     pub fn try_load(&mut self, skip_retryable: bool) -> Result<(), ConfigurationLoadError> {
         let maybe_whitelist = self.maybe_whitelist.as_ref();
-        self.url_list
-            .iter_mut()
-            .try_for_each(|(url, maybe_loader)| {
-                let load_result = if let Some(loader) = maybe_loader {
-                    let loader = loader
-                        .try_write()
-                        .map_err(|_| ConfigurationLoadError::AcquireLock { url: url.clone() })?;
-                    loader.try_load(url, maybe_whitelist.map(|vector| vector.as_slice()))
-                } else if let Some(loader) = self
-                    .loader_list
-                    .iter_mut()
-                    .find(|loader| loader.scheme_list().contains(&url.scheme().to_string()))
-                {
-                    loader.try_load(url, maybe_whitelist.map(|vector| vector.as_slice()))
-                } else {
-                    return Err(ConfigurationLoadError::UrlSchemeNotFound {
-                        scheme: url.scheme().to_string(),
-                    });
-                };
-                load_result
-                    .or_else(|error| {
-                        if skip_retryable && error.is_skippable() {
-                            Ok(Vec::new())
+        self.loader_list.iter_mut().try_for_each(|(url, loader)| {
+            loader
+                .try_load(url, maybe_whitelist.map(|vector| vector.as_slice()))
+                .or_else(|error| {
+                    if skip_retryable && error.is_skippable() {
+                        Ok(Vec::new())
+                    } else {
+                        Err(error)
+                    }
+                })
+                .map(|result| {
+                    result.into_iter().for_each(|(plugin_name, configuration)| {
+                        if let Some(configuration_list) = self.states.get_mut(&plugin_name) {
+                            configuration_list.push(configuration);
                         } else {
-                            Err(error)
+                            self.states.insert(plugin_name, [configuration].to_vec());
                         }
-                    })
-                    .map(|result| {
-                        result.into_iter().for_each(|(plugin_name, configuration)| {
-                            if let Some(configuration_list) = self.states.get_mut(&plugin_name) {
-                                configuration_list.push(configuration);
-                            } else {
-                                self.states.insert(plugin_name, [configuration].to_vec());
-                            }
-                        });
-                    })
-            })
+                    });
+                })
+        })
     }
 
     pub fn try_parse(&mut self) -> Result<(), ConfigurationError> {
