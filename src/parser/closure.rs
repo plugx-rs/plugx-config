@@ -5,20 +5,18 @@
 //!
 //! ```rust
 //! use plugx_config::{
+//!     ext::{plugx_input::Input, anyhow::anyhow},
 //!     error::ConfigurationParserError,
 //!     parser::{ConfigurationParser, closure::ConfigurationParserFn}
 //! };
 //!
-//! let parser_fn = |bytes: &[u8]| {
-//!     deser_hjson::from_slice(bytes).map_err(|error| ConfigurationParserError::Parse {
-//!         data: String::from_utf8_lossy(bytes).to_string(),
-//!         parser: "HJSON".to_string(),
-//!         supported_format_list: ["hjson".into()].into(),
-//!         source: error.into(),
-//!     })
+//! let parser_fn = |bytes: &[u8]| -> anyhow::Result<Input> {
+//!     deser_hjson::from_slice(bytes).map_err(|error| anyhow!(error))
 //! };
 //!
-//! let parser = ConfigurationParserFn::new("hjson", Box::new(parser_fn));
+//! let parser_name = "HJSON";
+//! let parser_format = "hjson";
+//! let parser = ConfigurationParserFn::new("HJSNO", "hjson", Box::new(parser_fn));
 //! let bytes = br#"
 //! {
 //!     hello: ["w", "o", "l", "d"]
@@ -31,7 +29,7 @@
 //!     }
 //! }
 //! "#;
-//! let parsed = parser.try_parse(bytes).unwrap();
+//! let parsed = parser.parse(bytes).unwrap();
 //! assert!(
 //!     parsed.as_map().len() == 2 &&
 //!     parsed.as_map().contains_key("foo") &&
@@ -53,23 +51,21 @@
 //! ```
 //!
 
-use crate::error::ConfigurationParserError;
-use crate::parser::{BoxedModifierFn, ConfigurationParser};
+use crate::parser::ConfigurationParser;
 use plugx_input::Input;
 use std::fmt::{Debug, Display, Formatter};
 
 /// A `|&[u8]| -> Result<Input, ConfigurationParserError>` [Fn] to parse contents.
-pub type BoxedParserFn =
-    Box<dyn Fn(&[u8]) -> Result<Input, ConfigurationParserError> + Send + Sync>;
+pub type BoxedParserFn = Box<dyn Fn(&[u8]) -> anyhow::Result<Input> + Send + Sync>;
 /// A `|&[u8]| -> Option<bool>` [Fn] to validate contents.
 pub type BoxedValidatorFn = Box<dyn Fn(&[u8]) -> Option<bool> + Send + Sync>;
 
 /// Builder struct.
 pub struct ConfigurationParserFn {
+    name: String,
     parser: BoxedParserFn,
     validator: BoxedValidatorFn,
     supported_format_list: Vec<String>,
-    maybe_modifier: Option<BoxedModifierFn>,
 }
 
 impl Display for ConfigurationParserFn {
@@ -86,18 +82,23 @@ impl Display for ConfigurationParserFn {
 impl Debug for ConfigurationParserFn {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ConfigurationParserFn")
+            .field("name", &self.name)
             .field("supported_format_list", &self.supported_format_list)
             .finish()
     }
 }
 
 impl ConfigurationParserFn {
-    pub fn new<F: AsRef<str>>(supported_format: F, parser: BoxedParserFn) -> Self {
+    pub fn new<N: AsRef<str>, F: AsRef<str>>(
+        name: N,
+        supported_format: F,
+        parser: BoxedParserFn,
+    ) -> Self {
         Self {
+            name: name.as_ref().to_string(),
             parser,
             validator: Box::new(|_| None),
             supported_format_list: [supported_format.as_ref().to_string()].to_vec(),
-            maybe_modifier: None,
         }
     }
 
@@ -130,28 +131,19 @@ impl ConfigurationParserFn {
         self.set_format_list(format_list);
         self
     }
-
-    pub fn set_modifier(&mut self, modifier: BoxedModifierFn) {
-        self.maybe_modifier = Some(modifier);
-    }
-
-    pub fn with_modifier(mut self, modifier: BoxedModifierFn) -> Self {
-        self.set_modifier(modifier);
-        self
-    }
 }
 
 impl ConfigurationParser for ConfigurationParserFn {
+    fn name(&self) -> String {
+        self.name.clone()
+    }
+
     fn supported_format_list(&self) -> Vec<String> {
         self.supported_format_list.clone()
     }
 
-    fn try_parse(&self, bytes: &[u8]) -> Result<Input, ConfigurationParserError> {
-        let mut result = (self.parser)(bytes)?;
-        if let Some(ref modifier) = self.maybe_modifier {
-            modifier(bytes, &mut result)?;
-        }
-        Ok(result)
+    fn try_parse(&self, bytes: &[u8]) -> anyhow::Result<Input> {
+        (self.parser)(bytes)
     }
 
     fn is_format_supported(&self, bytes: &[u8]) -> Option<bool> {

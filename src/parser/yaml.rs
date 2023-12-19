@@ -45,30 +45,17 @@
 //! ```
 //!
 
-use crate::{
-    error::ConfigurationParserError,
-    parser::{BoxedModifierFn, ConfigurationParser},
-};
+use crate::parser::ConfigurationParser;
+use anyhow::anyhow;
 use plugx_input::Input;
 use std::fmt::{Debug, Display, Formatter};
 
-const NAME: &str = "YAML";
-const SUPPORTED_FORMAT_LIST: &[&str] = &["yml", "yaml"];
-
-#[derive(Default)]
-pub struct ConfigurationParserYaml {
-    maybe_modifier: Option<BoxedModifierFn>,
-}
+#[derive(Default, Debug, Copy, Clone)]
+pub struct ConfigurationParserYaml;
 
 impl Display for ConfigurationParserYaml {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str(NAME)
-    }
-}
-
-impl Debug for ConfigurationParserYaml {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ConfigurationParserYaml").finish()
+        f.write_str("YAML parser")
     }
 }
 
@@ -76,38 +63,19 @@ impl ConfigurationParserYaml {
     pub fn new() -> Self {
         Default::default()
     }
-
-    pub fn set_modifier(&mut self, modifier: BoxedModifierFn) {
-        self.maybe_modifier = Some(modifier);
-    }
-
-    pub fn with_modifier(mut self, modifier: BoxedModifierFn) -> Self {
-        self.set_modifier(modifier);
-        self
-    }
 }
 
 impl ConfigurationParser for ConfigurationParserYaml {
-    fn supported_format_list(&self) -> Vec<String> {
-        SUPPORTED_FORMAT_LIST
-            .iter()
-            .cloned()
-            .map(Into::into)
-            .collect()
+    fn name(&self) -> String {
+        "YAML".into()
     }
 
-    fn try_parse(&self, bytes: &[u8]) -> Result<Input, ConfigurationParserError> {
-        let mut result =
-            serde_yaml::from_slice(bytes).map_err(|error| ConfigurationParserError::Parse {
-                data: String::from_utf8_lossy(bytes).to_string(),
-                parser: NAME.to_string(),
-                supported_format_list: self.supported_format_list(),
-                source: error.into(),
-            })?;
-        if let Some(ref modifier) = self.maybe_modifier {
-            modifier(bytes, &mut result)?;
-        }
-        Ok(result)
+    fn supported_format_list(&self) -> Vec<String> {
+        ["yml".into(), "yaml".into()].into()
+    }
+
+    fn try_parse(&self, bytes: &[u8]) -> anyhow::Result<Input> {
+        serde_yaml::from_slice(bytes).map_err(|error| anyhow!(error))
     }
 
     fn is_format_supported(&self, bytes: &[u8]) -> Option<bool> {

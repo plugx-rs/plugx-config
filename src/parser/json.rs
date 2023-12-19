@@ -21,48 +21,28 @@
 //! "#;
 //!
 //! let parser = ConfigurationParserJson::new();
-//! // You can set nested key separator like this:
-//! // parser.set_key_separator("__");
-//! let parsed: Input = parser.try_parse(bytes.as_slice()).unwrap();
-//! assert!(
-//!     parsed.as_map().len() == 2 &&
-//!     parsed.as_map().contains_key("foo") &&
-//!     parsed.as_map().contains_key("hello")
-//! );
-//! let foo = parsed.as_map().get("foo").unwrap();
-//! assert!(
-//!     foo.as_map().len() == 2 &&
-//!     foo.as_map().contains_key("bar") &&
-//!     foo.as_map().contains_key("xyz")
-//! );
-//! let bar = foo.as_map().get("bar").unwrap();
-//! assert_eq!(bar.as_map().get("baz").unwrap(), &"Qux".into());
-//! assert_eq!(bar.as_map().get("abc").unwrap(), &3.14.into());
-//! let xyz = foo.as_map().get("xyz").unwrap();
-//! assert_eq!(xyz, &false.into());
-//! let list = ["w", "o", "l", "d"].into();
-//! assert_eq!(parsed.as_map().get("hello").unwrap(), &list);
-//! ```
+//! let parsed: Input = parser.parse(bytes.as_slice()).unwrap();
 //!
+//! assert!(parsed.is_map());
+//! let map = parsed.as_map();
+//! assert!(
+//!     map.len() == 2 &&
+//!     map.contains_key("foo") &&
+//!     map.contains_key("hello")
+//! );
+//! ```
 
-use crate::{
-    error::ConfigurationParserError,
-    parser::{BoxedModifierFn, ConfigurationParser},
-};
+use crate::parser::ConfigurationParser;
+use anyhow::anyhow;
 use plugx_input::Input;
 use std::fmt::{Debug, Display, Formatter};
 
-const NAME: &str = "JSON";
-const SUPPORTED_FORMAT_LIST: &[&str] = &["json"];
-
-#[derive(Default)]
-pub struct ConfigurationParserJson {
-    maybe_modifier: Option<BoxedModifierFn>,
-}
+#[derive(Clone, Copy, Default)]
+pub struct ConfigurationParserJson;
 
 impl Display for ConfigurationParserJson {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str(NAME)
+        f.write_str("JSON parser")
     }
 }
 
@@ -76,38 +56,19 @@ impl ConfigurationParserJson {
     pub fn new() -> Self {
         Default::default()
     }
-
-    pub fn set_modifier(&mut self, modifier: BoxedModifierFn) {
-        self.maybe_modifier = Some(modifier);
-    }
-
-    pub fn with_modifier(mut self, modifier: BoxedModifierFn) -> Self {
-        self.set_modifier(modifier);
-        self
-    }
 }
 
 impl ConfigurationParser for ConfigurationParserJson {
-    fn supported_format_list(&self) -> Vec<String> {
-        SUPPORTED_FORMAT_LIST
-            .iter()
-            .cloned()
-            .map(Into::into)
-            .collect()
+    fn name(&self) -> String {
+        "JSON".into()
     }
 
-    fn try_parse(&self, bytes: &[u8]) -> Result<Input, ConfigurationParserError> {
-        let mut result =
-            serde_json::from_slice(bytes).map_err(|error| ConfigurationParserError::Parse {
-                data: String::from_utf8_lossy(bytes).to_string(),
-                parser: NAME.to_string(),
-                supported_format_list: self.supported_format_list(),
-                source: error.into(),
-            })?;
-        if let Some(ref modifier) = self.maybe_modifier {
-            modifier(bytes, &mut result)?;
-        }
-        Ok(result)
+    fn supported_format_list(&self) -> Vec<String> {
+        ["json".into()].into()
+    }
+
+    fn try_parse(&self, bytes: &[u8]) -> anyhow::Result<Input> {
+        serde_json::from_slice(bytes).map_err(|error| anyhow!(error))
     }
 
     fn is_format_supported(&self, bytes: &[u8]) -> Option<bool> {
