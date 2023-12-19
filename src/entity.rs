@@ -171,7 +171,7 @@ impl ConfigurationEntity {
             .iter()
             .find(|parser| parser.supported_format_list().contains(&format))
         {
-            parser.try_parse(contents.as_bytes())
+            parser.parse(contents.as_bytes())
         } else {
             Err(ConfigurationParserError::ParserNotFound)
         }

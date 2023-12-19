@@ -17,7 +17,7 @@
 //! let parser = ConfigurationParserEnv::new();
 //! // You can set nested key separator like this:
 //! // parser.set_key_separator("__");
-//! let parsed: Input = parser.try_parse(bytes.as_slice()).unwrap();
+//! let parsed: Input = parser.parse(bytes.as_slice()).unwrap();
 //! assert!(
 //!     parsed.as_map().len() == 2 &&
 //!     parsed.as_map().contains_key("foo") &&
@@ -39,83 +39,45 @@
 //! ```
 //!
 
-use crate::{
-    error::ConfigurationParserError,
-    parser::{BoxedModifierFn, ConfigurationParser},
-};
+use crate::parser::ConfigurationParser;
 use anyhow::{anyhow, bail};
 use plugx_input::{position, position::InputPosition, Input};
 use std::fmt::{Debug, Display, Formatter};
 
-pub const NAME: &str = "Environment-Variables";
-const SUPPORTED_FORMAT_LIST: &[&str] = &["env"];
-pub const DEFAULT_KEY_SEPARATOR: &str = "__";
-
+#[derive(Debug, Clone)]
 pub struct ConfigurationParserEnv {
-    prefix: String,
-    key_separator: String,
-    maybe_modifier: Option<BoxedModifierFn>,
+    separator: String,
 }
 
 impl Default for ConfigurationParserEnv {
     fn default() -> Self {
         Self {
-            prefix: Default::default(),
-            key_separator: DEFAULT_KEY_SEPARATOR.to_string(),
-            maybe_modifier: Default::default(),
+            separator: crate::loader::env::default::option::separator(),
         }
-    }
-}
-
-impl Debug for ConfigurationParserEnv {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ConfigurationParserEnv")
-            .field("prefix", &self.prefix)
-            .field("key_separator", &self.key_separator)
-            .finish()
     }
 }
 
 impl Display for ConfigurationParserEnv {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str(NAME)
+        f.write_str("Environment-Variables parser")
     }
 }
 
 impl ConfigurationParser for ConfigurationParserEnv {
-    fn supported_format_list(&self) -> Vec<String> {
-        SUPPORTED_FORMAT_LIST
-            .iter()
-            .cloned()
-            .map(Into::into)
-            .collect()
+    fn name(&self) -> String {
+        "Environment-Variables".to_string()
     }
 
-    fn try_parse(&self, bytes: &[u8]) -> Result<Input, ConfigurationParserError> {
-        let text =
-            String::from_utf8(bytes.to_vec()).map_err(|error| ConfigurationParserError::Parse {
-                data: String::from_utf8_lossy(bytes).to_string(),
-                parser: NAME.to_string(),
-                supported_format_list: self.supported_format_list(),
-                source: error.into(),
-            })?;
+    fn supported_format_list(&self) -> Vec<String> {
+        ["env".into()].into()
+    }
+
+    fn try_parse(&self, bytes: &[u8]) -> anyhow::Result<Input> {
+        let text = String::from_utf8(bytes.to_vec())
+            .map_err(|error| anyhow!("Could not decode contents to UTF-8 ({error})"))?;
         let mut list = dotenv_parser::parse_dotenv(text.as_str())
-            .map_err(|error| ConfigurationParserError::Parse {
-                data: text.clone(),
-                parser: NAME.to_string(),
-                supported_format_list: self.supported_format_list(),
-                source: anyhow!(error),
-            })?
+            .map_err(|error| anyhow!(error))?
             .into_iter()
-            .filter_map(|(key, value)| {
-                if self.prefix.is_empty() {
-                    Some((key, value))
-                } else if key.starts_with(&self.prefix) {
-                    Some((key.chars().skip(self.prefix.len()).collect(), value))
-                } else {
-                    None
-                }
-            })
             .collect::<Vec<(String, String)>>();
         list.sort_by_key(|(key, _)| key.to_string());
 
@@ -125,7 +87,7 @@ impl ConfigurationParser for ConfigurationParserEnv {
             list.into_iter()
                 .map(|(key, value)| {
                     (
-                        key.split(self.key_separator.as_str())
+                        key.split(self.separator.as_str())
                             .map(|key| key.to_lowercase())
                             .collect::<Vec<String>>(),
                         value,
@@ -134,15 +96,7 @@ impl ConfigurationParser for ConfigurationParserEnv {
                 .collect::<Vec<_>>()
                 .as_slice(),
         )
-        .map_err(|error| ConfigurationParserError::Parse {
-            data: text,
-            parser: NAME.to_string(),
-            supported_format_list: self.supported_format_list(),
-            source: error,
-        })?;
-        if let Some(ref modifier) = self.maybe_modifier {
-            modifier(bytes, &mut map)?;
-        }
+        .map_err(|error| anyhow!(error))?;
         Ok(map)
     }
 
@@ -160,30 +114,12 @@ impl ConfigurationParserEnv {
         Default::default()
     }
 
-    pub fn set_prefix<P: AsRef<str>>(&mut self, prefix: P) {
-        self.prefix = prefix.as_ref().to_string();
-    }
-
-    pub fn with_prefix<P: AsRef<str>>(mut self, prefix: P) -> Self {
-        self.set_prefix(prefix);
-        self
-    }
-
     pub fn set_key_separator<K: AsRef<str>>(&mut self, key_separator: K) {
-        self.key_separator = key_separator.as_ref().to_string();
+        self.separator = key_separator.as_ref().to_string();
     }
 
     pub fn with_key_separator<K: AsRef<str>>(mut self, key_separator: K) -> Self {
         self.set_key_separator(key_separator);
-        self
-    }
-
-    pub fn set_modifier(&mut self, modifier: BoxedModifierFn) {
-        self.maybe_modifier = Some(modifier);
-    }
-
-    pub fn with_modifier(mut self, modifier: BoxedModifierFn) -> Self {
-        self.set_modifier(modifier);
         self
     }
 }

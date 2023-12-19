@@ -15,10 +15,6 @@ pub mod yaml;
 
 pub mod closure;
 
-/// A modifier [Fn] that modifies parsed contents (if needed).
-pub type BoxedModifierFn =
-    Box<dyn Fn(&[u8], &mut Input) -> Result<(), ConfigurationParserError> + Send + Sync>;
-
 /// Parser error type.
 #[derive(Debug, Error)]
 pub enum ConfigurationParserError {
@@ -37,12 +33,25 @@ pub enum ConfigurationParserError {
 
 /// A trait to parse configuration contents.
 pub trait ConfigurationParser: Send + Sync + Debug {
+    /// Name of this parser (e.g. "YAML")
+    fn name(&self) -> String;
+
     /// Supported format list (e.g. "yml")
     fn supported_format_list(&self) -> Vec<String>;
 
     /// Parses a byte slice to [Input].
-    fn try_parse(&self, bytes: &[u8]) -> Result<Input, ConfigurationParserError>;
+    fn try_parse(&self, bytes: &[u8]) -> anyhow::Result<Input>;
 
-    /// Checks if provided byte slice is ok for future parsing.
+    /// Checks if provided byte slice is ok for future parsing. (e.g. is it YAML at all or not)
     fn is_format_supported(&self, bytes: &[u8]) -> Option<bool>;
+
+    fn parse(&self, bytes: &[u8]) -> Result<Input, ConfigurationParserError> {
+        self.try_parse(bytes)
+            .map_err(|source| ConfigurationParserError::Parse {
+                data: String::from_utf8_lossy(bytes).to_string(),
+                parser: self.name(),
+                supported_format_list: self.supported_format_list(),
+                source,
+            })
+    }
 }
