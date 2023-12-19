@@ -24,12 +24,6 @@
 //! // For example if you're loading contents of one file that may potentially not exists:
 //! // loader.add_skippable_error(SkippbaleErrorKind::NotFound)
 //!
-//! let modifier = |url: &Url, loaded: &mut Vec<_>| {
-//!     // Modify loaded configuration if needed
-//!     Ok(())
-//! };
-//! loader.set_modifier(Box::new(modifier)); // Note that setting a modifier is optional
-//!
 //! // Load all configurations inside directory:
 //! let loaded = loader.try_load(&url, None).unwrap();
 //! assert_eq!(loaded.len(), 3);
@@ -55,30 +49,24 @@
 
 use crate::{
     entity::ConfigurationEntity,
-    loader::{self, BoxedLoaderModifierFn, ConfigurationLoadError, ConfigurationLoader},
+    loader::{self, ConfigurationLoadError, ConfigurationLoader},
 };
 use anyhow::anyhow;
 use cfg_if::cfg_if;
 use serde::Deserialize;
-use std::{
-    collections::HashMap,
-    fmt::{Debug, Formatter},
-    fs, io,
-    path::PathBuf,
-};
+use std::{collections::HashMap, fmt::Debug, fs, io, path::PathBuf};
 use url::Url;
 
 const NAME: &str = "File";
 const SCHEME_LIST: &[&str] = &["fs", "file"];
 
 /// Loads configurations from filesystem.
-#[derive(Default)]
+#[derive(Default, Clone, Debug)]
 pub struct ConfigurationLoaderFs {
     options: ConfigurationLoaderFsOptions,
-    maybe_modifier: Option<BoxedLoaderModifierFn>,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 struct ConfigurationLoaderFsOptions {
     skippable: Vec<SkippbaleErrorKind>,
@@ -115,14 +103,6 @@ impl TryFrom<io::ErrorKind> for SkippbaleErrorKind {
             io::ErrorKind::TimedOut => Ok(Self::TimedOut),
             _ => Err("Unhandled IO error".into()),
         }
-    }
-}
-
-impl Debug for ConfigurationLoaderFs {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ConfigurationLoaderEnv")
-            .field("options", &self.options)
-            .finish()
     }
 }
 
@@ -307,15 +287,6 @@ impl ConfigurationLoaderFs {
         self
     }
 
-    pub fn set_modifier(&mut self, modifier: BoxedLoaderModifierFn) {
-        self.maybe_modifier = Some(modifier)
-    }
-
-    pub fn with_modifier(mut self, modifier: BoxedLoaderModifierFn) -> Self {
-        self.set_modifier(modifier);
-        self
-    }
-
     fn get_options(
         &self,
         url: &Url,
@@ -359,14 +330,10 @@ impl ConfigurationLoader for ConfigurationLoaderFs {
                 }
             })
         })?;
-        let mut result = entity_list
+        let result = entity_list
             .into_iter()
             .map(|entity| (entity.plugin_name().clone(), entity))
             .collect();
-        if let Some(ref modifier) = self.maybe_modifier {
-            // TODO: logging
-            modifier(url, &mut result)?;
-        }
         Ok(result)
     }
 }
