@@ -12,18 +12,12 @@
 //! set_var("MY_APP_NAME__FOO__B_A_R", "Baz");
 //! set_var("MY_APP_NAME__QUX__ABC", "XYZ");
 //!
-//! let url = Url::try_from("env://?prefix=MY_APP_NAME&separator=__").expect("A valid URL!");
+//! let url = Url::try_from("env://?prefix=MY_APP_NAME").expect("A valid URL!");
 //!
 //! let mut loader = ConfigurationLoaderEnv::new();
 //! // You could set `prefix` and `separator` like this too:
 //! // loader.set_prefix("MY_APP_NAME");
 //! // loader.set_separator("__");
-//!
-//! let modifier = |url: &Url, loaded: &mut Vec<_>| {
-//!     // Modify loaded configuration if needed
-//!     Ok(())
-//! };
-//! loader.set_modifier(Box::new(modifier)); // Note that setting a modifier is optional
 //!
 //! // We do not set `whitelist` so we're going to load all plugins configurations:
 //! let mut maybe_whitelist = None;
@@ -45,25 +39,20 @@
 
 use crate::{
     entity::ConfigurationEntity,
-    loader::{self, BoxedLoaderModifierFn, ConfigurationLoadError, ConfigurationLoader},
+    loader::{self, ConfigurationLoadError, ConfigurationLoader},
 };
 use serde::Deserialize;
-use std::collections::HashMap;
-use std::{
-    env,
-    fmt::{Debug, Formatter},
-};
+use std::{collections::HashMap, env, fmt::Debug};
 use url::Url;
 const NAME: &str = "Environment-Variables";
 
 /// Loads configurations from Environment-Variables.
-#[derive(Default)]
+#[derive(Debug, Default, Clone)]
 pub struct ConfigurationLoaderEnv {
     options: ConfigurationLoaderEnvOptions,
-    maybe_modifier: Option<BoxedLoaderModifierFn>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 struct ConfigurationLoaderEnvOptions {
     #[serde(rename = "prefix")]
@@ -84,13 +73,13 @@ impl Default for ConfigurationLoaderEnvOptions {
     }
 }
 
-impl Debug for ConfigurationLoaderEnv {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ConfigurationLoaderEnv")
-            .field("options", &self.options)
-            .finish()
-    }
-}
+// impl Debug for ConfigurationLoaderEnv {
+//     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+//         f.debug_struct("ConfigurationLoaderEnv")
+//             .field("options", &self.options)
+//             .finish()
+//     }
+// }
 
 pub mod default {
     pub mod option {
@@ -140,15 +129,6 @@ impl ConfigurationLoaderEnv {
     /// Used is separating plugin names.
     pub fn with_separator<S: AsRef<str>>(mut self, separator: S) -> Self {
         self.set_separator(separator);
-        self
-    }
-
-    pub fn set_modifier(&mut self, modifier: BoxedLoaderModifierFn) {
-        self.maybe_modifier = Some(modifier)
-    }
-
-    pub fn with_modifier(mut self, modifier: BoxedLoaderModifierFn) -> Self {
-        self.set_modifier(modifier);
         self
     }
 }
@@ -231,7 +211,7 @@ impl ConfigurationLoader for ConfigurationLoaderEnv {
                     result.insert(plugin_name, key_value);
                 }
             });
-        let mut result = result
+        let result = result
             .into_iter()
             .map(|(plugin_name, contents)| {
                 (
@@ -242,10 +222,6 @@ impl ConfigurationLoader for ConfigurationLoaderEnv {
                 )
             })
             .collect();
-        if let Some(ref modifier) = self.maybe_modifier {
-            // TODO: logging
-            modifier(url, &mut result)?;
-        }
         Ok(result)
     }
 }

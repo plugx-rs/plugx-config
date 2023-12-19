@@ -33,7 +33,7 @@
 
 use crate::{
     entity::ConfigurationEntity,
-    loader::{BoxedLoaderModifierFn, ConfigurationLoadError, ConfigurationLoader},
+    loader::{ConfigurationLoadError, ConfigurationLoader},
 };
 use std::fmt::{Debug, Formatter};
 use url::Url;
@@ -52,7 +52,6 @@ pub type BoxedLoaderFn = Box<
 pub struct ConfigurationLoaderFn {
     name: String,
     loader: BoxedLoaderFn,
-    maybe_modifier: Option<BoxedLoaderModifierFn>,
     scheme_list: Vec<String>,
 }
 
@@ -70,7 +69,6 @@ impl ConfigurationLoaderFn {
         Self {
             name: name.as_ref().to_string(),
             loader,
-            maybe_modifier: None,
             scheme_list: [scheme.as_ref().into()].into(),
         }
     }
@@ -90,15 +88,6 @@ impl ConfigurationLoaderFn {
 
     pub fn with_loader(mut self, loader: BoxedLoaderFn) -> Self {
         self.set_loader(loader);
-        self
-    }
-
-    pub fn set_modifier(&mut self, modifier: BoxedLoaderModifierFn) {
-        self.maybe_modifier = Some(modifier)
-    }
-
-    pub fn with_modifier(mut self, modifier: BoxedLoaderModifierFn) -> Self {
-        self.set_modifier(modifier);
         self
     }
 
@@ -129,11 +118,6 @@ impl ConfigurationLoader for ConfigurationLoaderFn {
         url: &Url,
         maybe_whitelist: Option<&[String]>,
     ) -> Result<Vec<(String, ConfigurationEntity)>, ConfigurationLoadError> {
-        let mut result = (self.loader)(url, maybe_whitelist)?;
-        if let Some(ref modifier) = self.maybe_modifier {
-            // TODO: logging
-            modifier(url, &mut result)?
-        }
-        Ok(result)
+        (self.loader)(url, maybe_whitelist)
     }
 }
