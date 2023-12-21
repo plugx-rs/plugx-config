@@ -5,50 +5,43 @@ use crate::{
     parser::ConfigurationParser,
 };
 use anyhow::anyhow;
-use plugx_input::{
-    position::InputPosition,
-    schema::{InputSchemaError, InputSchemaType},
-    Input,
-};
-use std::{
-    collections::HashMap,
-    env::{self, VarError},
-};
+use cfg_if::cfg_if;
+use plugx_input::{position::InputPosition, schema::InputSchemaType, Input};
+use std::env;
 use url::Url;
 
 #[derive(Debug)]
 pub struct Configuration {
-    parser_list: Vec<Box<dyn ConfigurationParser>>,
-    #[allow(clippy::type_complexity)]
     loader_list: Vec<(Url, Box<dyn ConfigurationLoader>)>,
-    states: HashMap<String, Vec<ConfigurationEntity>>,
-    merged: HashMap<String, Input>,
+    parser_list: Vec<Box<dyn ConfigurationParser>>,
     maybe_whitelist: Option<Vec<String>>,
-    forget_loaded: bool,
-    forget_parsed: bool,
 }
 
 impl Default for Configuration {
     fn default() -> Self {
-        let mut new = Self::new();
-        new.parser_list = vec![
-            #[cfg(feature = "env")]
-            Box::<crate::parser::env::ConfigurationParserEnv>::default(),
-            #[cfg(feature = "json")]
-            Box::<crate::parser::json::ConfigurationParserJson>::default(),
-            #[cfg(feature = "toml")]
-            Box::<crate::parser::toml::ConfigurationParserToml>::default(),
-            #[cfg(feature = "yaml")]
-            Box::<crate::parser::yaml::ConfigurationParserYaml>::default(),
-        ];
-        new
+        Self {
+            parser_list: vec![
+                #[cfg(feature = "env")]
+                Box::<crate::parser::env::ConfigurationParserEnv>::default(),
+                #[cfg(feature = "json")]
+                Box::<crate::parser::json::ConfigurationParserJson>::default(),
+                #[cfg(feature = "toml")]
+                Box::<crate::parser::toml::ConfigurationParserToml>::default(),
+                #[cfg(feature = "yaml")]
+                Box::<crate::parser::yaml::ConfigurationParserYaml>::default(),
+            ],
+            loader_list: Default::default(),
+            maybe_whitelist: Default::default(),
+        }
     }
 }
 
 impl Configuration {
     pub fn new() -> Self {
         Self {
-            ..Default::default()
+            parser_list: Default::default(),
+            loader_list: Default::default(),
+            maybe_whitelist: Default::default(),
         }
     }
 }
@@ -58,6 +51,30 @@ impl Configuration {
         self.loader_list
             .iter()
             .any(|(inner_url, _)| inner_url == url)
+    }
+
+    pub fn with_url(mut self, url: Url) -> Result<Self, ConfigurationLoadError> {
+        self.add_url(url)?;
+        Ok(self)
+    }
+
+    pub fn add_url(&mut self, url: Url) -> Result<(), ConfigurationLoadError> {
+        let scheme = url.scheme().to_string();
+        #[cfg(feature = "env")]
+        {
+            let loader = crate::loader::env::ConfigurationLoaderEnv::new();
+            if loader.scheme_list().contains(&scheme) {
+                return Ok(self.add_url_and_boxed_loader(url, Box::new(loader)));
+            };
+        }
+        #[cfg(feature = "fs")]
+        {
+            let loader = crate::loader::fs::ConfigurationLoaderFs::new();
+            if loader.scheme_list().contains(&scheme) {
+                return Ok(self.add_url_and_boxed_loader(url, Box::new(loader)));
+            };
+        }
+        Err(ConfigurationLoadError::LoaderNotFound { scheme, url })
     }
 
     pub fn with_url_and_loader<L>(self, url: Url, loader: L) -> Self
@@ -94,22 +111,32 @@ impl Configuration {
             .iter()
             .position(|(inner_url, _)| inner_url == url)
         {
-            self.loader_list.remove(index);
+            self.loader_list.swap_remove(index);
             result = true;
         }
         result
     }
 
     pub fn take_boxed_loader(&mut self, url: &Url) -> Option<Box<dyn ConfigurationLoader>> {
-        if let Some(index) = self
-            .loader_list
+        self.loader_list
             .iter()
             .position(|(inner_url, _)| inner_url == url)
-        {
-            Some(self.loader_list.swap_remove(index).1)
-        } else {
-            None
-        }
+            .map(|index| {
+                let (_, loader) = self.loader_list.swap_remove(index);
+                loader
+            })
+    }
+
+    pub fn load(
+        &mut self,
+        skip_soft_errors: bool,
+    ) -> Result<Vec<(String, Vec<ConfigurationEntity>)>, ConfigurationLoadError> {
+        let maybe_whitelist = self.maybe_whitelist.as_ref().map(|list| list.as_slice());
+        load(
+            self.loader_list.as_slice(),
+            maybe_whitelist,
+            skip_soft_errors,
+        )
     }
 }
 
@@ -137,6 +164,15 @@ impl Configuration {
     pub fn add_boxed_parser(&mut self, parser: Box<dyn ConfigurationParser>) {
         self.parser_list.push(parser);
     }
+
+    pub fn parse(
+        &mut self,
+        skip_soft_errors: bool,
+    ) -> Result<Vec<(String, Vec<ConfigurationEntity>)>, ConfigurationError> {
+        let mut load_result = self.load(skip_soft_errors)?;
+        parse(load_result.as_mut(), self.parser_list.as_slice())?;
+        Ok(load_result)
+    }
 }
 
 impl Configuration {
@@ -146,16 +182,25 @@ impl Configuration {
     ) -> Result<(), ConfigurationError> {
         let whitelist = env::var(key.as_ref())
             .map(|value| value.trim().to_lowercase())
-            .and_then(|value| {
+            .map(|value| {
                 if value.is_empty() {
-                    Err(VarError::NotPresent)
+                    Vec::new()
                 } else {
-                    Ok(value.split([' ', ',']).map(String::from).collect())
+                    value.split([' ', ',', ';']).map(String::from).collect()
                 }
             })
             .map_err(|error| {
                 ConfigurationError::Other(anyhow!("Invalid key or the value is not set: {}", error))
             })?;
+        if whitelist.is_empty() {
+            cfg_if! {
+                if #[cfg(feature = "tracing")] {
+                    tracing::warn!(key=key.as_ref(), "Whitelist environment-variable is set to empty")
+                } else if #[cfg(feature = "logging")] {
+                    log::warn!("key={:?} message=\"Whitelist environment-variable is set to empty\"", key.as_ref())
+                }
+            }
+        }
         self.set_whitelist(whitelist);
         Ok(())
     }
@@ -193,154 +238,135 @@ impl Configuration {
 }
 
 impl Configuration {
-    pub fn configuration(&self) -> &HashMap<String, Input> {
-        &self.merged
-    }
-
-    pub fn configuration_mut(&mut self) -> &mut HashMap<String, Input> {
-        &mut self.merged
+    pub fn merge(
+        &mut self,
+        skip_soft_errors: bool,
+    ) -> Result<Vec<(String, Input)>, ConfigurationError> {
+        let mut parsed = self.parse(skip_soft_errors)?;
+        merge(parsed.as_mut())
     }
 }
 
 impl Configuration {
-    pub fn with_forget_loaded(mut self, flag: bool) -> Self {
-        self.set_forget_loaded(flag);
-        self
-    }
-
-    pub fn set_forget_loaded(&mut self, flag: bool) {
-        self.forget_loaded = flag;
-    }
-
-    pub fn forget_loaded(&mut self) {
-        self.states.iter_mut().for_each(|(_, list)| {
-            list.iter_mut()
-                .for_each(|configuration| *configuration.maybe_contents_mut() = None)
-        })
-    }
-
-    pub fn with_forget_parsed(mut self, flag: bool) -> Self {
-        self.set_forget_parsed(flag);
-        self
-    }
-
-    pub fn set_forget_parsed(&mut self, flag: bool) {
-        self.forget_parsed = flag;
-    }
-
-    pub fn forget_parsed(&mut self) {
-        self.states.iter_mut().for_each(|(_, list)| {
-            list.iter_mut()
-                .for_each(|configuration| *configuration.maybe_parsed_contents_mut() = None)
-        })
+    pub fn validate(
+        &mut self,
+        schema_list: &[(String, InputSchemaType)],
+        skip_soft_errors: bool,
+    ) -> Result<Vec<(String, Input)>, ConfigurationError> {
+        let mut merged = self.merge(skip_soft_errors)?;
+        validate(merged.as_mut(), schema_list)
     }
 }
-impl Configuration {
-    pub fn try_load(&mut self, skip_retryable: bool) -> Result<(), ConfigurationLoadError> {
-        let maybe_whitelist = self.maybe_whitelist.as_ref();
-        self.loader_list.iter_mut().try_for_each(|(url, loader)| {
+
+pub fn load(
+    loader_list: &[(Url, Box<dyn ConfigurationLoader>)],
+    maybe_whitelist: Option<&[String]>,
+    skip_soft_errors: bool,
+) -> Result<Vec<(String, Vec<ConfigurationEntity>)>, ConfigurationLoadError> {
+    let mut result: Vec<(String, Vec<_>)> = Vec::new();
+    loader_list
+        .iter()
+        .try_for_each(|(url, loader)| {
             loader
-                .try_load(url, maybe_whitelist.map(|vector| vector.as_slice()))
+                .try_load(url, maybe_whitelist)
                 .or_else(|error| {
-                    if skip_retryable && error.is_skippable() {
+                    if skip_soft_errors && error.is_skippable() {
                         Ok(Vec::new())
                     } else {
                         Err(error)
                     }
                 })
-                .map(|result| {
-                    result.into_iter().for_each(|(plugin_name, configuration)| {
-                        if let Some(configuration_list) = self.states.get_mut(&plugin_name) {
-                            configuration_list.push(configuration);
-                        } else {
-                            self.states.insert(plugin_name, [configuration].to_vec());
-                        }
-                    });
+                .map(|loaded_list| {
+                    loaded_list
+                        .into_iter()
+                        .for_each(|(plugin_name, configuration)| {
+                            if let Some((_, configuration_list)) = result
+                                .iter_mut()
+                                .find(|(loaded_plugin_name, _)| loaded_plugin_name == &plugin_name)
+                            {
+                                configuration_list.push(configuration);
+                            } else {
+                                result.push((plugin_name.clone(), [configuration].to_vec()))
+                            }
+                        });
                 })
         })
-    }
+        .map(|_| result)
+}
 
-    pub fn try_parse(&mut self) -> Result<(), ConfigurationError> {
-        self.states
-            .iter_mut()
-            .try_for_each(|(plugin_name, configuration_list)| {
-                configuration_list.iter_mut().try_for_each(|configuration| {
-                    let parsed =
-                        configuration
-                            .parse_contents(&self.parser_list)
-                            .map_err(|error| ConfigurationError::Parse {
-                                plugin_name: plugin_name.to_string(),
-                                url: configuration.url().clone(),
-                                source: error,
+pub fn parse(
+    plugin_configuration_list: &mut [(String, Vec<ConfigurationEntity>)],
+    parser_list: &[Box<dyn ConfigurationParser>],
+) -> Result<(), ConfigurationError> {
+    plugin_configuration_list
+        .iter_mut()
+        .try_for_each(|(plugin_name, configuration_list)| {
+            configuration_list
+                .into_iter()
+                .try_for_each(|configuration| {
+                    if configuration.maybe_parsed_contents().is_none() {
+                        let parsed =
+                            configuration.parse_contents(parser_list).map_err(|error| {
+                                ConfigurationError::Parse {
+                                    plugin_name: plugin_name.to_string(),
+                                    url: configuration.url().clone(),
+                                    source: error,
+                                }
                             })?;
-                    configuration.set_parsed_contents(parsed);
-                    Ok(())
-                })
-            })
-            .map(|result| {
-                if self.forget_loaded {
-                    self.forget_loaded()
-                };
-                result
-            })
-    }
+                        configuration.set_parsed_contents(parsed);
+                    }
+                    Ok::<_, ConfigurationError>(())
+                })?;
+            Ok::<_, ConfigurationError>(())
+        })
+}
 
-    pub fn merge(&mut self) {
-        self.states
-            .iter()
-            .for_each(|(plugin_name, configuration_list)| {
-                let mut first = Input::new_map();
-                configuration_list
-                    .iter()
-                    .filter(|configuration| configuration.maybe_parsed_contents().is_some())
-                    .for_each(|configuration| {
-                        plugx_input::merge::merge_with_positions(
-                            &mut first,
-                            plugx_input::position::new().new_with_key(plugin_name),
-                            configuration.maybe_parsed_contents().unwrap(),
-                            plugx_input::position::new().new_with_key(configuration.url().as_str()),
-                        )
-                    });
-                self.merged.insert(plugin_name.to_string(), first);
-            });
-        if self.forget_parsed {
-            self.forget_parsed()
-        }
-    }
-
-    pub fn try_validate(
-        &mut self,
-        schemas: &HashMap<String, InputSchemaType>,
-    ) -> Result<(), InputSchemaError> {
-        self.merged
-            .iter_mut()
-            .try_for_each(|(plugin_name, merged_configuration)| {
-                if let Some(schema) = schemas.get(plugin_name) {
-                    schema.validate(
-                        merged_configuration,
-                        Some(InputPosition::new().new_with_key(plugin_name)),
+pub fn merge(
+    plugin_configuration_list: &[(String, Vec<ConfigurationEntity>)],
+) -> Result<Vec<(String, Input)>, ConfigurationError> {
+    let mut result = Vec::with_capacity(plugin_configuration_list.len());
+    plugin_configuration_list
+        .iter()
+        .for_each(|(plugin_name, configuration_list)| {
+            let mut first = Input::new_map();
+            configuration_list
+                .iter()
+                .filter(|configuration| configuration.maybe_parsed_contents().is_some())
+                .for_each(|configuration| {
+                    plugx_input::merge::merge_with_positions(
+                        &mut first,
+                        plugx_input::position::new().new_with_key(plugin_name),
+                        configuration.maybe_parsed_contents().unwrap(),
+                        plugx_input::position::new().new_with_key(configuration.url().as_str()),
                     )
-                } else {
-                    Ok(())
-                }
-            })
-    }
+                });
+            result.push((plugin_name.to_string(), first));
+        });
+    Ok(result)
+}
 
-    pub fn try_load_parse_merge(&mut self, skip_retryable: bool) -> Result<(), ConfigurationError> {
-        self.try_load(skip_retryable)
-            .map_err(|source| ConfigurationError::Load { source })?;
-        self.try_parse()?;
-        self.merge();
-        Ok(())
-    }
-
-    pub fn try_load_parse_merge_validate(
-        &mut self,
-        skip_retryable: bool,
-        schemas: &HashMap<String, InputSchemaType>,
-    ) -> Result<(), ConfigurationError> {
-        self.try_load_parse_merge(skip_retryable)?;
-        self.try_validate(schemas)
-            .map_err(|source| ConfigurationError::Validate { source })
-    }
+pub fn validate(
+    plugin_configuration_list: &[(String, Input)],
+    schema_list: &[(String, InputSchemaType)],
+) -> Result<Vec<(String, Input)>, ConfigurationError> {
+    let mut result = Vec::with_capacity(plugin_configuration_list.len());
+    plugin_configuration_list
+        .iter()
+        .try_for_each(|(plugin_name, configuration)| {
+            let mut configuration = configuration.clone();
+            if let Some((_, schema_type)) = schema_list
+                .iter()
+                .find(|(schema_plugin_name, _)| schema_plugin_name == plugin_name)
+            {
+                schema_type.validate(
+                    &mut configuration,
+                    Some(InputPosition::new().new_with_key(plugin_name)),
+                )
+            } else {
+                Ok(())
+            }?;
+            result.push((plugin_name.to_string(), configuration));
+            Ok::<_, ConfigurationError>(())
+        })
+        .map(|_| result)
 }

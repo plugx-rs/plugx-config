@@ -84,8 +84,8 @@ pub enum ConfigurationLoadError {
         source: anyhow::Error,
         skippable: bool,
     },
-    #[error("Could not acquire lock for configuration loader with url `{url}`")]
-    AcquireLock { url: Url },
+    #[error("Could not found a loader that supports URL scheme `{scheme}` in given URL `{url}`")]
+    LoaderNotFound { scheme: String, url: Url },
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }

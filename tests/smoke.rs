@@ -1,5 +1,5 @@
 #[test]
-fn smoke() {
+fn smoke() -> Result<(), anyhow::Error> {
     cfg_if::cfg_if! {
         if #[cfg(feature = "tracing")] {
             let _ = tracing_subscriber::fmt()
@@ -14,11 +14,7 @@ fn smoke() {
         }
     }
 
-    use plugx_config::{
-        ext::url::Url,
-        loader::{env::ConfigurationLoaderEnv, fs::ConfigurationLoaderFs},
-        Configuration,
-    };
+    use plugx_config::{ext::url::Url, Configuration};
     use plugx_input::schema::InputSchemaType;
     use std::{collections::HashMap, env, fs};
 
@@ -42,14 +38,11 @@ fn smoke() {
         .expect("Valid URL");
 
     let mut configuration = Configuration::default()
-        .with_url_and_loader(env_url, ConfigurationLoaderEnv::new())
-        .with_url_and_loader(file_url, ConfigurationLoaderFs::new());
+        .with_url(env_url)?
+        .with_url(file_url)?;
     let apply_skippable_errors = true;
-    configuration
-        .try_load_parse_merge(apply_skippable_errors)
-        .unwrap();
-    configuration
-        .configuration()
+    let merged = configuration.merge(apply_skippable_errors).unwrap();
+    merged
         .iter()
         .for_each(|(plugin, config)| println!("{plugin}: {config}"));
     // Prints:
@@ -61,15 +54,17 @@ fn smoke() {
     let rules_yml =
         fs::read_to_string(env::current_dir().unwrap().join("tests").join("rules.yml")).unwrap();
     let rules: HashMap<String, InputSchemaType> = serde_yaml::from_str(rules_yml.as_str()).unwrap();
+    let rules: Vec<(String, InputSchemaType)> = rules.into_iter().collect();
     configuration
-        .try_load_parse_merge_validate(apply_skippable_errors, &rules)
+        .validate(&rules, apply_skippable_errors)
         .unwrap();
     env::set_var("APP_NAME__FOO__SERVER__ADDRESS", "127.0.0.1.bad.ip");
     let error = configuration
-        .try_load_parse_merge_validate(apply_skippable_errors, &rules)
+        .validate(&rules, apply_skippable_errors)
         .err()
         .unwrap();
     println!("{error}");
     // Prints:
     // [foo][server][address] Could not parse IP address: invalid IP address syntax (expected IP address and got "127.0.0.1.bad.ip")
+    Ok(())
 }
