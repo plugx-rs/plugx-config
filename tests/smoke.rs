@@ -44,10 +44,10 @@ fn smoke() -> Result<(), anyhow::Error> {
         .iter()
         .for_each(|(plugin, config)| println!("{plugin}: {config}"));
     // Prints:
-    //  foo: {"server": {"address": "127.0.0.1", "port": 8080}}
-    //  baz: {"logging": {"output_serialize_format": "json", "level": "debug"}}
+    //  foo: {"server": {"port": 8080, "address": "127.0.0.1"}}
+    //  qux: {"https": {"follow_redirects": false, "insecure": false}}
+    //  baz: {"logging": {"level": "debug", "output_serialize_format": "json"}}
     //  bar: {"sqlite": {"file": "/path/to/app.db", "recreate": true}}
-    //  qux: {"https": {"insecure": false, "follow_redirects": false}}
 
     let rules_yml =
         fs::read_to_string(env::current_dir().unwrap().join("tests").join("rules.yml")).unwrap();
@@ -63,6 +63,6 @@ fn smoke() -> Result<(), anyhow::Error> {
         .unwrap();
     println!("{:#}", plugx_config::ext::anyhow::anyhow!(error));
     // Prints:
-    // [foo][server][address] Could not parse IP address: invalid IP address syntax (expected IP address and got "127.0.0.1.bad.ip")
+    //   [foo][server][address] invalid IP address syntax ("127.0.0.1.bad.ip")
     Ok(())
 }
