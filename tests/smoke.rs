@@ -37,9 +37,7 @@ fn smoke() -> Result<(), anyhow::Error> {
         .parse()
         .expect("Valid URL");
 
-    let mut configuration = Configuration::default()
-        .with_url(env_url)?
-        .with_url(file_url)?;
+    let mut configuration = Configuration::new().with_url(env_url)?.with_url(file_url)?;
     let apply_skippable_errors = true;
     let merged = configuration.merge(apply_skippable_errors).unwrap();
     merged
@@ -63,7 +61,7 @@ fn smoke() -> Result<(), anyhow::Error> {
         .validate(&rules, apply_skippable_errors)
         .err()
         .unwrap();
-    println!("{error}");
+    println!("{:#}", plugx_config::ext::anyhow::anyhow!(error));
     // Prints:
     // [foo][server][address] Could not parse IP address: invalid IP address syntax (expected IP address and got "127.0.0.1.bad.ip")
     Ok(())
