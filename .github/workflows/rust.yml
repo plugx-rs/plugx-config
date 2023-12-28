@@ -1,34 +1,50 @@
-name: Check
+name: Rust
 
 on:
   push:
-    tags-ignore:
-      - "*.*.*"
-    branches-ignore:
-      - "documentation"
+    branches:
+      - "master"
   pull_request:
     branches:
       - "master"
 
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
-  build:
-    name: Test
+  style:
     runs-on: ubuntu-latest
     steps:
-      - name: Installing Rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
-          components: rustfmt, clippy
+      - uses: actions/checkout@v4
+      - name: Check style
+        run: make check-style
 
-      - name: Checking out sources
-        uses: actions/checkout@v1
-      - name: Check source style
-        run: cargo fmt --check
-      - name: Build source
-        run: cargo build --all-features
-      - name: Test current source
-        run: cargo test --all-features -- --nocapture
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
       - name: Clippy
-        run: cargo clippy --no-deps --all-features
+        run: make clippy
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: make all
+
+  test:
+    runs-on: ubuntu-latest
+    needs:
+      - build
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test
+        run: make test
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check style
+        run: make docs
