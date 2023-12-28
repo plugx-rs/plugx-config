@@ -11,10 +11,7 @@ foo:
             default: 127.0.0.1
           port:
             schema:
-              type: integer
-              range:
-                min: 1
-                max: 65535
+              type: port
 
 bar:
   type: static_map
@@ -30,7 +27,7 @@ bar:
           file:
             schema:
               type: fs
-              maybe_path_type: file
+              access: rw
 
 baz:
   type: static_map

@@ -57,8 +57,8 @@ use serde::Deserialize;
 use std::{collections::HashMap, fmt::Debug, fs, io, path::PathBuf};
 use url::Url;
 
-const NAME: &str = "File";
-const SCHEME_LIST: &[&str] = &["fs", "file"];
+pub const NAME: &str = "File";
+pub const SCHEME_LIST: &[&str] = &["fs", "file"];
 
 /// Loads configurations from filesystem.
 #[derive(Default, Clone, Debug)]

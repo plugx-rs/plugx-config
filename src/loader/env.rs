@@ -44,7 +44,8 @@ use crate::{
 use serde::Deserialize;
 use std::{collections::HashMap, env, fmt::Debug};
 use url::Url;
-const NAME: &str = "Environment-Variables";
+pub const NAME: &str = "Environment-Variables";
+pub const SCHEME_LIST: &[&str] = &["env"];
 
 /// Loads configurations from Environment-Variables.
 #[derive(Debug, Default, Clone)]
@@ -140,7 +141,7 @@ impl ConfigurationLoader for ConfigurationLoaderEnv {
 
     /// In this case `["env"]`.
     fn scheme_list(&self) -> Vec<String> {
-        ["env".into()].into()
+        SCHEME_LIST.iter().cloned().map(String::from).collect()
     }
 
     fn try_load(

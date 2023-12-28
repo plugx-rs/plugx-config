@@ -18,7 +18,6 @@
 //! provided [closure] lets you implement your own loader with just one [Fn] closure.
 
 use crate::entity::ConfigurationEntity;
-use serde::de::DeserializeOwned;
 use std::fmt::Debug;
 use url::Url;
 
@@ -84,8 +83,8 @@ pub enum ConfigurationLoadError {
         source: anyhow::Error,
         skippable: bool,
     },
-    #[error("Could not acquire lock for configuration loader with url `{url}`")]
-    AcquireLock { url: Url },
+    #[error("Could not found a loader that supports URL scheme `{scheme}` in given URL `{url}`")]
+    LoaderNotFound { scheme: String, url: Url },
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }
@@ -118,7 +117,7 @@ pub trait ConfigurationLoader: Send + Sync + Debug {
 ///
 /// See supported syntax from [serde_qs].
 /// This function is only usable if `qs` Cargo feature is enabled.
-pub fn deserialize_query_string<T: DeserializeOwned>(
+pub fn deserialize_query_string<T: serde::de::DeserializeOwned>(
     loader_name: impl AsRef<str>,
     url: &Url,
 ) -> Result<T, ConfigurationLoadError> {
