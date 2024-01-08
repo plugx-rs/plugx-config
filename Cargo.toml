@@ -13,24 +13,24 @@ keywords = ["configuration", "config", "cfg", "settings", "env"]
 include = ["src/**/*.rs", "Cargo.toml", "LICENSE", "README.md"]
 
 [dependencies]
-thiserror = "1.0.52"
-anyhow = "1.0.77"
-serde = {version = "1.0.193", features = ["derive"]}
+thiserror = "1.0.56"
+anyhow = "1.0.79"
+serde = {version = "1.0.195", features = ["derive"]}
 cfg-if = "1.0.0"
 url = {version = "2.5.0", features = ["serde"]}
 plugx-input = {version = "0.3.1", default-features = false, features = ["schema"]}
 
 #attohttpc = {version = "0.26.1", default-features = false, optional = true}
 serde_qs = {version = "0.12.0", default-features = false, optional = true}
-serde_json = {version = "1.0.108", optional = true}
-serde_yaml = {version = "0.9.29", optional = true}
+serde_json = {version = "1.0.111", optional = true}
+serde_yaml = {version = "0.9.30", optional = true}
 toml = {version = "0.8.8", optional = true}
 dotenv-parser = {version = "0.1.3", optional = true}
 
 log = {version = "0.4.20", optional = true}
 tracing = {version = "0.1.40", optional = true}
 
-clap = {version = "4.4.11", default-features = false, features = ["std", "derive"], optional = true}
+clap = {version = "4.4.13", default-features = false, features = ["std", "derive"], optional = true}
 
 [features]
 default = ["logging", "env"]
