@@ -4,10 +4,11 @@
 //!
 //! ### Example
 //! ```rust
-//! use std::collections::HashMap;
 //! use std::env::set_var;
-//! use url::Url;
-//! use plugx_config::loader::{ConfigurationLoader, env::ConfigurationLoaderEnv};
+//! use plugx_config::{
+//!     loader::{ConfigurationLoader, env::ConfigurationLoaderEnv},
+//!     ext::url::Url,
+//! };
 //!
 //! set_var("MY_APP_NAME__FOO__B_A_R", "Baz");
 //! set_var("MY_APP_NAME__QUX__ABC", "XYZ");
@@ -15,22 +16,29 @@
 //! let url = Url::try_from("env://?prefix=MY_APP_NAME").expect("A valid URL!");
 //!
 //! let mut loader = ConfigurationLoaderEnv::new();
-//! // You could set `prefix` and `separator` like this too:
-//! // loader.set_prefix("MY_APP_NAME");
-//! // loader.set_separator("__");
+//! // You could set `prefix`, `separator`, and `strip_prefix` programmatically like this:
+//! // loader.[set|with]_prefix("MY_APP_NAME");
+//! // loader.[set|with]_separator("__");
+//! // loader.[set|with]_strip_prefix(true);
 //!
-//! // We do not set `whitelist` so we're going to load all plugins configurations:
+//! // We do not set `whitelist` so we're going to load all plugins' configurations:
 //! let mut maybe_whitelist = None;
-//! let result = loader.try_load(&url, maybe_whitelist).unwrap();
-//! let (_, foo) = result.iter().find(|(plugin_name, _)| plugin_name == "foo").expect("`foo` plugin config");
+//! let result = loader.try_load(&url, maybe_whitelist, false).unwrap();
+//! let (_, foo) = result
+//!     .iter()
+//!     .find(|(plugin_name, _)| plugin_name == "foo")
+//!     .expect("`foo` plugin config");
 //! assert_eq!(foo.maybe_contents(), Some(&"B_A_R=\"Baz\"".to_string()));
-//! let (_, qux) = result.iter().find(|(plugin_name, _)| plugin_name == "qux").expect("`qux` plugin config");
+//! let (_, qux) = result
+//!     .iter()
+//!     .find(|(plugin_name, _)| plugin_name == "qux")
+//!     .expect("`qux` plugin config");
 //! assert_eq!(qux.maybe_contents(), Some(&"ABC=\"XYZ\"".to_string()));
 //!
-//! // Only load (and not modify) `foo` plugin configurations:
+//! // Only load `foo` plugin configuration:
 //! let whitelist = ["foo".to_string()].to_vec();
-//! maybe_whitelist = Some(whitelist.as_slice());
-//! let result = loader.try_load(&url, maybe_whitelist).unwrap();
+//! maybe_whitelist = Some(&whitelist);
+//! let result = loader.try_load(&url, maybe_whitelist, false).unwrap();
 //! assert!(result.iter().find(|(plugin_name, _)| plugin_name == "foo").is_some());
 //! assert!(result.iter().find(|(plugin_name, _)| plugin_name == "qux").is_none());
 //! ```
@@ -42,8 +50,9 @@ use crate::{
     loader::{self, ConfigurationLoadError, ConfigurationLoader},
 };
 use serde::Deserialize;
-use std::{collections::HashMap, env, fmt::Debug};
+use std::{env, fmt::Debug};
 use url::Url;
+
 pub const NAME: &str = "Environment-Variables";
 pub const SCHEME_LIST: &[&str] = &["env"];
 
@@ -123,6 +132,17 @@ impl ConfigurationLoaderEnv {
         self.set_separator(separator);
         self
     }
+
+    /// Used is separating plugin names.
+    pub fn set_strip_prefix(&mut self, strip_prefix: bool) {
+        self.options.strip_prefix = strip_prefix;
+    }
+
+    /// Used is separating plugin names.
+    pub fn with_strip_prefix(mut self, strip_prefix: bool) -> Self {
+        self.set_strip_prefix(strip_prefix);
+        self
+    }
 }
 
 impl ConfigurationLoader for ConfigurationLoaderEnv {
@@ -135,10 +155,12 @@ impl ConfigurationLoader for ConfigurationLoaderEnv {
         SCHEME_LIST.iter().cloned().map(String::from).collect()
     }
 
+    /// This loader does not support `skip_soft_errors`.  
     fn try_load(
         &self,
         url: &Url,
         maybe_whitelist: Option<&[String]>,
+        _skip_soft_errors: bool,
     ) -> Result<Vec<(String, ConfigurationEntity)>, ConfigurationLoadError> {
         let ConfigurationLoaderEnvOptions {
             mut prefix,
@@ -157,7 +179,7 @@ impl ConfigurationLoader for ConfigurationLoaderEnv {
         if !separator.is_empty() && !prefix.is_empty() && !prefix.ends_with(separator.as_str()) {
             prefix += separator.as_str()
         }
-        let mut result: HashMap<String, String> = HashMap::new();
+        let mut result = Vec::new();
         env::vars()
             .filter(|(key, _)| prefix.is_empty() || key.starts_with(prefix.as_str()))
             .map(|(mut key, value)| {
@@ -196,14 +218,16 @@ impl ConfigurationLoader for ConfigurationLoaderEnv {
             })
             .for_each(|(plugin_name, key, value)| {
                 let key_value = format!("{key}={value:?}");
-                if let Some(configuration) = result.get_mut(&plugin_name) {
+                if let Some((_, configuration)) =
+                    result.iter_mut().find(|(name, _)| *name == plugin_name)
+                {
                     *configuration += "\n";
                     *configuration += key_value.as_str();
                 } else {
-                    result.insert(plugin_name, key_value);
+                    result.push((plugin_name, key_value));
                 }
             });
-        let result = result
+        Ok(result
             .into_iter()
             .map(|(plugin_name, contents)| {
                 (
@@ -213,7 +237,6 @@ impl ConfigurationLoader for ConfigurationLoaderEnv {
                         .with_contents(contents),
                 )
             })
-            .collect();
-        Ok(result)
+            .collect())
     }
 }

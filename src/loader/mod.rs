@@ -67,16 +67,12 @@ pub enum ConfigurationLoadError {
         format_2: String,
     },
     /// Could not load the configuration.
-    ///
-    /// Note that `skippable` key is very important. A [ConfigurationLoader] implementation with good
-    /// error-handling can make some errors skippable based on received options in given [Url].
     #[error("{loader} configuration loader could not {description} `{url}`")]
     Load {
         loader: String,
         url: Url,
         description: String,
         source: anyhow::Error,
-        skippable: bool,
     },
     #[error("Could not found a loader that supports URL scheme `{scheme}` in given URL `{url}`")]
     LoaderNotFound { scheme: String, url: Url },
@@ -162,6 +158,7 @@ pub trait ConfigurationLoader: Send + Sync + Debug {
         &self,
         url: &Url,
         maybe_whitelist: Option<&[String]>,
+        skip_soft_errors: bool,
     ) -> Result<Vec<(String, ConfigurationEntity)>, ConfigurationLoadError>;
 }
 
@@ -290,15 +287,5 @@ impl<'de, T: Deserialize<'de>> Deserialize<'de> for SoftErrors<T> {
         deserializer.deserialize_str(SoftErrorsVisitor {
             _marker: PhantomData,
         })
-    }
-}
-
-impl ConfigurationLoadError {
-    pub fn is_skippable(&self) -> bool {
-        if let Self::Load { skippable, .. } = self {
-            *skippable
-        } else {
-            false
-        }
     }
 }

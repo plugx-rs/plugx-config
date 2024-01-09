@@ -26,7 +26,7 @@
 //! // loader.add_skippable_error(SkippbaleErrorKind::NotFound)
 //!
 //! // Load all configurations inside directory:
-//! let loaded = loader.try_load(&url, None).unwrap();
+//! let loaded = loader.try_load(&url, None, false).unwrap();
 //! assert_eq!(loaded.len(), 3);
 //! let (_, foo) = loaded.iter().find(|(plugin_name, _)| plugin_name == "foo").expect("`foo` plugin config");
 //! assert_eq!(foo.maybe_format(), Some(&"json".to_string()));
@@ -35,14 +35,14 @@
 //!
 //! // Only load `foo` and `bar`:
 //! let whitelist = ["foo".into(), "bar".into()].to_vec();
-//! let loaded = loader.try_load(&url, Some(&whitelist)).unwrap();
+//! let loaded = loader.try_load(&url, Some(&whitelist), false).unwrap();
 //! assert_eq!(loaded.len(), 2);
 //!
 //! // Load just one file:
 //! let qux = tmp_dir.path().join("qux.env");
 //! fs::write(&qux, "hello=\"world\"").unwrap();
 //! let url = Url::try_from(format!("file://{}", qux.to_str().unwrap()).as_str()).unwrap();
-//! let loaded = loader.try_load(&url, None).unwrap();
+//! let loaded = loader.try_load(&url, None, false).unwrap();
 //! assert_eq!(loaded.len(), 1);
 //! ```
 //!
@@ -146,19 +146,34 @@ pub mod utils {
         url: &Url,
         options: &ConfigurationLoaderFsOptions,
         maybe_whitelist: Option<&[String]>,
+        skip_soft_errors: bool,
     ) -> Result<Vec<ConfigurationEntity>, ConfigurationLoadError> {
         let path = PathBuf::from(url.path());
         if path.is_dir() {
-            let list = get_directory_file_list(path, maybe_whitelist).map_err(|error| {
-                let skippable = options.contains(error.kind());
-                ConfigurationLoadError::Load {
-                    loader: NAME.to_string(),
-                    url: url.clone(),
-                    description: "load directory file list".to_string(),
-                    source: error.into(),
-                    skippable,
+            let list = match get_directory_file_list(&path, maybe_whitelist) {
+                Ok(list) => list,
+                Err(error)
+                    if skip_soft_errors
+                        && (options.soft_errors.skip_all() || options.contains(error.kind())) =>
+                {
+                    cfg_if! {
+                        if #[cfg(feature = "tracing")] {
+                            tracing::info!(path = ?path, skip_error=true, "Could not load directory contents");
+                        } else if #[cfg(feature = "logging")] {
+                            log::warn!("path={path:?} skip_error=true msg=\"Could not load directory contents\"");
+                        }
+                    }
+                    return Ok(Vec::new());
                 }
-            })?;
+                Err(error) => {
+                    return Err(ConfigurationLoadError::Load {
+                        loader: NAME.to_string(),
+                        url: url.clone(),
+                        description: "load directory file list".to_string(),
+                        source: error.into(),
+                    })
+                }
+            };
             let mut plugins: HashMap<&String, &String> = HashMap::with_capacity(list.len());
             for (plugin_name, format, _) in list.iter() {
                 if let Some(other_format) = plugins.get(plugin_name) {
@@ -195,6 +210,15 @@ pub mod utils {
                 } else {
                     Ok(Vec::new())
                 }
+            } else if skip_soft_errors && options.soft_errors.skip_all() {
+                cfg_if! {
+                    if #[cfg(feature = "tracing")] {
+                        tracing::info!(url = ?url, skip_error=true, "Could not parse plugin name/format");
+                    } else if #[cfg(feature = "logging")] {
+                        log::warn!("url={:?} skip_error=true msg=\"Could not parse plugin name/format\"", url.to_string());
+                    }
+                }
+                Ok(Vec::new())
             } else {
                 Err(ConfigurationLoadError::InvalidUrl {
                     loader: NAME.to_string(),
@@ -203,18 +227,28 @@ pub mod utils {
                 })
             }
         } else if path.exists() {
-            Err(ConfigurationLoadError::InvalidUrl {
-                loader: NAME.to_string(),
-                url: url.to_string(),
-                source: anyhow!("This is not pointing to a directory or regular file"),
-            })
-        } else if options.contains(io::ErrorKind::NotFound) {
+            if skip_soft_errors && options.soft_errors.skip_all() {
+                cfg_if! {
+                    if #[cfg(feature = "tracing")] {
+                        tracing::info!(url = ?url, skip_error=true, "URL is not pointing to a directory or regular file");
+                    } else if #[cfg(feature = "logging")] {
+                        log::warn!("url={:?} skip_error=true msg=\"URL is not pointing to a directory or regular file\"", url.to_string());
+                    }
+                }
+                Ok(Vec::new())
+            } else {
+                Err(ConfigurationLoadError::InvalidUrl {
+                    loader: NAME.to_string(),
+                    url: url.to_string(),
+                    source: anyhow!("URL is not pointing to a directory or regular file"),
+                })
+            }
+        } else if skip_soft_errors && options.contains(io::ErrorKind::NotFound) {
             Err(ConfigurationLoadError::Load {
                 loader: NAME.to_string(),
                 url: url.clone(),
                 description: "find path".to_string(),
                 source: anyhow!(io::Error::from(io::ErrorKind::NotFound)),
-                skippable: true,
             })
         } else {
             Err(ConfigurationLoadError::NotFound {
@@ -225,8 +259,8 @@ pub mod utils {
     }
 
     #[inline]
-    pub fn get_directory_file_list(
-        path: PathBuf,
+    pub fn get_directory_file_list<P: AsRef<Path>>(
+        path: P,
         maybe_whitelist: Option<&[String]>,
     ) -> Result<Vec<(String, String, PathBuf)>, io::Error> {
         Ok(fs::read_dir(path)?
@@ -254,12 +288,12 @@ pub mod utils {
                     Some((plugin_name, format, path))
                 } else {
                     cfg_if! {
-                            if #[cfg(feature = "tracing")] {
-                                tracing::warn!(path = ?path, "This is not a regular file");
-                            } else if #[cfg(feature = "logging")] {
-                                log::warn!("path={path:?} message=\"This is not a regular file\"");
-                            }
+                        if #[cfg(feature = "tracing")] {
+                            tracing::warn!(path = ?path, "This is not a regular file");
+                        } else if #[cfg(feature = "logging")] {
+                            log::warn!("path={path:?} message=\"This is not a regular file\"");
                         }
+                    }
                     None
                 }
             })
@@ -318,23 +352,37 @@ impl ConfigurationLoader for ConfigurationLoaderFs {
         &self,
         url: &Url,
         maybe_whitelist: Option<&[String]>,
+        skip_soft_errors: bool,
     ) -> Result<Vec<(String, ConfigurationEntity)>, ConfigurationLoadError> {
         let options = self.get_options(url)?;
-        let mut entity_list = utils::get_entity_list(url, &options, maybe_whitelist)?;
+        let mut entity_list =
+            utils::get_entity_list(url, &options, maybe_whitelist, skip_soft_errors)?;
         entity_list.iter_mut().try_for_each(|entity| {
-            utils::read_entity_contents(entity).map_err(|error| {
-                let skippable = options.contains(error.kind());
-                ConfigurationLoadError::Load {
+            match utils::read_entity_contents(entity) {
+                Ok(_) => Ok(()),
+                Err(error) if skip_soft_errors && (self.options.soft_errors.skip_all() || self.options.contains(error.kind())) => {
+                    entity.url().path();
+                        cfg_if! {
+                        if #[cfg(feature = "tracing")] {
+                            tracing::info!(path = entity.url().path(), skip_error=true, "Could not read contents of file");
+                        } else if #[cfg(feature = "logging")] {
+                            log::warn!("path={:?} skip_error=true msg=\"Could not read contents of file\"", entity.url().path());
+                        }
+                    }
+                    Ok(())
+                }
+                Err(error) => Err(ConfigurationLoadError::Load {
                     loader: NAME.to_string(),
                     url: entity.url().clone(),
-                    description: "read entity file".to_string(),
+                    description: "read contents of file".to_string(),
                     source: error.into(),
-                    skippable,
-                }
-            })
+                })
+            }
         })?;
         let result = entity_list
             .into_iter()
+            // Maybe we have skipped soft errors in above:
+            .filter(|entity| entity.maybe_contents().is_some())
             .map(|entity| (entity.plugin_name().clone(), entity))
             .collect();
         Ok(result)

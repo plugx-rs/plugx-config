@@ -32,15 +32,3 @@ pub enum ConfigurationError {
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }
-
-impl ConfigurationError {
-    /// Checks if the error occurred in [crate::loader::ConfigurationLoader::try_load] is
-    /// skippable or not.
-    pub fn is_skippable(&self) -> bool {
-        if let Self::Load { source, .. } = self {
-            source.is_skippable()
-        } else {
-            false
-        }
-    }
-}

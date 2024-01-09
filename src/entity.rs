@@ -15,7 +15,7 @@
 //! let loader = ConfigurationLoaderEnv::new().with_prefix("MY_APP_NAME").with_separator("__");
 //! set_var("MY_APP_NAME__FOO__BAR__BAZ", "3.14");
 //! set_var("MY_APP_NAME__FOO__QUX", "false");
-//! let loaded = loader.try_load(&url, None).unwrap();
+//! let loaded = loader.try_load(&url, None, false).unwrap();
 //! let (_, foo_entity) = loaded.iter().find(|(plugin_name, _)| plugin_name == "foo").expect("`foo` plugin config");
 //! // Above `loader` actually does this:
 //! let loader_name = loader.name();
