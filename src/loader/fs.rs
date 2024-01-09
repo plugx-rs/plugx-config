@@ -1,12 +1,13 @@
-//! File system configuration loader.
+//! File system configuration loader (`fs` feature).
 //!
-//! This is only usable if you enabled `fs` Cargo feature.
+//! * Supported schema: `fs` and `file`  
+//! *
 //!
 //! ### Example
 //! ```rust
 //! use std::{fs, collections::HashMap};
 //! use tempdir::TempDir;
-//! use plugx_config::loader::{ConfigurationLoader, fs::{ConfigurationLoaderFs, SkippbaleErrorKind}};
+//! use plugx_config::loader::{ConfigurationLoader, fs::{ConfigurationLoaderFs, SoftErrorsFs}};
 //! use url::Url;
 //!
 //! // Create a temporary directory containing `foo.json`, `bar.yaml`, and `baz.toml`:
@@ -47,6 +48,7 @@
 //!
 //! See [loader] documentation to known how loaders work.
 
+use crate::loader::SoftErrors;
 use crate::{
     entity::ConfigurationEntity,
     loader::{self, ConfigurationLoadError, ConfigurationLoader},
@@ -69,21 +71,20 @@ pub struct ConfigurationLoaderFs {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 struct ConfigurationLoaderFsOptions {
-    skippable: Vec<SkippbaleErrorKind>,
+    soft_errors: SoftErrors<SoftErrorsFs>,
 }
 
 impl ConfigurationLoaderFsOptions {
     pub fn contains(&self, error: io::ErrorKind) -> bool {
-        SkippbaleErrorKind::try_from(error)
-            .map(|error| self.skippable.contains(&error))
+        SoftErrorsFs::try_from(error)
+            .map(|error| self.soft_errors.contains(&error))
             .unwrap_or_default()
     }
 }
 
-/// Supported skippable errors when loading filesystem contents.
+/// Supported soft errors when loading filesystem contents.
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum SkippbaleErrorKind {
+pub enum SoftErrorsFs {
     WouldBlock,
     Interrupted,
     NotFound,
@@ -91,7 +92,7 @@ pub enum SkippbaleErrorKind {
     TimedOut,
 }
 
-impl TryFrom<io::ErrorKind> for SkippbaleErrorKind {
+impl TryFrom<io::ErrorKind> for SoftErrorsFs {
     type Error = String;
 
     fn try_from(value: io::ErrorKind) -> Result<Self, Self::Error> {
@@ -278,12 +279,12 @@ impl ConfigurationLoaderFs {
         Default::default()
     }
 
-    pub fn add_skippable_error(&mut self, error: SkippbaleErrorKind) {
-        self.options.skippable.push(error)
+    pub fn add_soft_error(&mut self, error: SoftErrorsFs) {
+        self.options.soft_errors.add_soft_error(error)
     }
 
-    pub fn with_skippable_error(mut self, error: SkippbaleErrorKind) -> Self {
-        self.add_skippable_error(error);
+    pub fn with_soft_error(mut self, error: SoftErrorsFs) -> Self {
+        self.add_soft_error(error);
         self
     }
 
@@ -293,9 +294,11 @@ impl ConfigurationLoaderFs {
     ) -> Result<ConfigurationLoaderFsOptions, ConfigurationLoadError> {
         loader::deserialize_query_string::<ConfigurationLoaderFsOptions>(NAME, url).map(
             |mut options| {
-                options
-                    .skippable
-                    .append(&mut self.options.skippable.clone());
+                if let Some(soft_errors) = self.options.soft_errors.maybe_soft_error_list() {
+                    soft_errors.into_iter().for_each(|soft_error| {
+                        options.soft_errors.add_soft_error(soft_error.clone())
+                    })
+                }
                 options
             },
         )

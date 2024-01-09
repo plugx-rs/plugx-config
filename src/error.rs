@@ -1,7 +1,10 @@
 //! All possible error types.
 
+#[doc(inline)]
 pub use crate::loader::ConfigurationLoadError;
+#[doc(inline)]
 pub use crate::parser::ConfigurationParserError;
+
 use url::Url;
 
 /// Main error wrapper.

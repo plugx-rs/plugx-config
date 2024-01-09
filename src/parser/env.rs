@@ -52,7 +52,7 @@ pub struct ConfigurationParserEnv {
 impl Default for ConfigurationParserEnv {
     fn default() -> Self {
         Self {
-            separator: crate::loader::env::default::option::separator(),
+            separator: crate::loader::env::default::separator(),
         }
     }
 }

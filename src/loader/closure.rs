@@ -38,7 +38,7 @@ use crate::{
 use std::fmt::{Debug, Formatter};
 use url::Url;
 
-/// A `|&Url, Option<&[String]>| -> Result<HashMap<_, _>, ConfigurationLoadError>` [Fn]
+/// A `|&Url, Option<&[String]>| -> Result<Vec<String, ConfigurationEntity>, ConfigurationLoadError>` [Fn]
 pub type BoxedLoaderFn = Box<
     dyn Fn(
             &Url,

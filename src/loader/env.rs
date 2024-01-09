@@ -1,4 +1,4 @@
-//! Environment-Variables configuration loader.
+//! Environment-Variables configuration loader (`env` feature which is enabled by default).
 //!
 //! This is only usable if you enabled `env` Cargo feature.
 //!
@@ -35,7 +35,7 @@
 //! assert!(result.iter().find(|(plugin_name, _)| plugin_name == "qux").is_none());
 //! ```
 //!
-//! See [loader] documentation to known how loaders work.
+//! See [mod@loader] documentation to known how loaders work.
 
 use crate::{
     entity::ConfigurationEntity,
@@ -56,52 +56,43 @@ pub struct ConfigurationLoaderEnv {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 struct ConfigurationLoaderEnvOptions {
-    #[serde(rename = "prefix")]
     prefix: String,
-    #[serde(rename = "separator")]
     separator: String,
-    #[serde(rename = "strip_prefix")]
     strip_prefix: bool,
 }
 
 impl Default for ConfigurationLoaderEnvOptions {
     fn default() -> Self {
         Self {
-            prefix: default::option::prefix(),
-            separator: default::option::separator(),
-            strip_prefix: default::option::strip_prefix(),
+            prefix: default::prefix(),
+            separator: default::separator(),
+            strip_prefix: default::strip_prefix(),
         }
     }
 }
 
-// impl Debug for ConfigurationLoaderEnv {
-//     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-//         f.debug_struct("ConfigurationLoaderEnv")
-//             .field("options", &self.options)
-//             .finish()
-//     }
-// }
-
 pub mod default {
-    pub mod option {
-        pub fn prefix() -> String {
-            let mut prefix = option_env!("CARGO_BIN_NAME").unwrap_or("").to_string();
-            if prefix.is_empty() {
-                prefix = option_env!("CARGO_CRATE_NAME").unwrap_or("").to_string();
-            }
-            if !prefix.is_empty() {
-                prefix += separator().as_str();
-            }
-            prefix
-        }
 
-        pub fn separator() -> String {
-            "__".to_string()
+    #[inline]
+    pub fn prefix() -> String {
+        let mut prefix = option_env!("CARGO_BIN_NAME").unwrap_or("").to_string();
+        if prefix.is_empty() {
+            prefix = option_env!("CARGO_CRATE_NAME").unwrap_or("").to_string();
         }
+        if !prefix.is_empty() {
+            prefix += separator().as_str();
+        }
+        prefix
+    }
 
-        pub fn strip_prefix() -> bool {
-            true
-        }
+    #[inline(always)]
+    pub fn separator() -> String {
+        "__".to_string()
+    }
+
+    #[inline(always)]
+    pub fn strip_prefix() -> bool {
+        true
     }
 }
 
@@ -154,13 +145,13 @@ impl ConfigurationLoader for ConfigurationLoaderEnv {
             mut separator,
             mut strip_prefix,
         } = loader::deserialize_query_string(NAME, url)?;
-        if self.options.prefix != default::option::prefix() {
+        if self.options.prefix != default::prefix() {
             prefix = self.options.prefix.clone()
         }
-        if self.options.separator != default::option::separator() {
+        if self.options.separator != default::separator() {
             separator = self.options.separator.clone()
         }
-        if self.options.strip_prefix != default::option::strip_prefix() {
+        if self.options.strip_prefix != default::strip_prefix() {
             strip_prefix = self.options.strip_prefix
         }
         if !separator.is_empty() && !prefix.is_empty() && !prefix.ends_with(separator.as_str()) {

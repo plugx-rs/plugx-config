@@ -1,24 +1,26 @@
 //! Configuration loader trait and implementations.
 //!
-//! A configuration loader only loads contents of one or more plugins. No parsing is done here.
-//! The result is just a hashmap with plugin names (in lowercase) as keys and [ConfigurationEntity]
-//! as values.
-//! A loader also should try to set contents format for each plugin.
-//! For example [fs] (that implements [ConfigurationLoader]) that loads
-//! configurations from filesystem, guesses content formats from file extensions.
+//! A configuration loader only loads contents of configurations for plugins. No parsing is done here.
+//! The result is just a `Vec<(String, ConfigurationEntity)>` with plugin names (in lowercase) as first element
+//! and [ConfigurationEntity] as values for each plugin.
+//! A loader also should try to set contents format for each plugin. For example [mod@fs] loader (that loads
+//! configurations from filesystem) guesses content formats from file extensions.
 //!
-//! Main method of [ConfigurationLoader] trait is `try_load` that accepts a URL and maybe a
-//! whitelist of plugin names. It can parse the URL to detect and validate its own options.
-//! For example [mod@env] that loads configuration from environment-variables
-//! accepts a URL like `env://?prefix=MY_APP_NAME` and [fs] accepts a URL
-//! like `file:///path/to/a/file.json?skippable[0]=notfound` (`skippable` is a list and should
-//! contain error kinds that we want to skip if they happen).
+//! Every configuration loader (every implementor of [ConfigurationLoader]) accepts a URL and maybe a
+//! whitelist of plugin names. It can parse the URL to detect and validate its own options. For example [mod@env] (that
+//! loads configuration from environment-variables) accepts a URL like `env://?prefix=MY_APP_NAME`.
 //!
-//! Note that generally you do not need to implement [ConfigurationLoader] for your own structs and
-//! provided [closure] lets you implement your own loader with just one [Fn] closure.
+//! Also a Loader can be mark some errors skippable! For more information refer to documentation of the loader itself.
+//!
+//! Note that generally you do not need to implement [ConfigurationLoader], provided [mod@closure] lets you make your
+//! own loader with just one [Fn] closure.
 
 use crate::entity::ConfigurationEntity;
+use serde::de::{Error, IntoDeserializer, Visitor};
+use serde::{Deserialize, Deserializer, Serialize};
+use std::fmt;
 use std::fmt::Debug;
+use std::marker::PhantomData;
 use url::Url;
 
 pub mod closure;
@@ -27,14 +29,7 @@ pub mod env;
 #[cfg(feature = "fs")]
 pub mod fs;
 
-/// A modifier [Fn] that modifies loaded configurations (if needed).
-pub type BoxedLoaderModifierFn = Box<
-    dyn Fn(&Url, &mut Vec<(String, ConfigurationEntity)>) -> Result<(), ConfigurationLoadError>
-        + Send
-        + Sync,
->;
-
-/// Loaded error type.
+/// Load error type.
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigurationLoadError {
     /// An entity could not be found.
@@ -73,8 +68,8 @@ pub enum ConfigurationLoadError {
     },
     /// Could not load the configuration.
     ///
-    /// note that `skippable` key is very important. You might want to detect your own options from
-    /// provided [Url] and sometimes make some errors skippable based on you detected options.    
+    /// Note that `skippable` key is very important. A [ConfigurationLoader] implementation with good
+    /// error-handling can make some errors skippable based on received options in given [Url].
     #[error("{loader} configuration loader could not {description} `{url}`")]
     Load {
         loader: String,
@@ -87,6 +82,64 @@ pub enum ConfigurationLoadError {
     LoaderNotFound { scheme: String, url: Url },
     #[error(transparent)]
     Other(#[from] anyhow::Error),
+}
+
+/// Soft errors deserializer wrapper for URL query strings.
+///
+/// ### Example
+/// ```
+///
+/// use plugx_config::{
+///     loader::{SoftErrors, deserialize_query_string},
+///     ext::{url::Url, serde::Deserialize},
+/// };
+///
+/// // Define an enum for your own errors
+/// #[derive(Debug, PartialEq, Deserialize)]
+/// enum MySoftErrors {
+///     NotFound,
+///     Permission,
+///     Empty,
+/// }
+///
+/// // Define a struct for your own options
+/// // Include your own errors inside your options
+/// #[derive(Debug, PartialEq, Deserialize)]
+/// struct MyOptions {
+///     // The value should be string `all` or dot seperated values of `MySoftErrors`
+///     skip_errors: SoftErrors<MySoftErrors>,
+///     // Other options ...
+/// }
+///
+/// // `deserialize_query_string` function needs loader name to generate a good descriptive error
+/// let loader_name = "file-loader";
+///
+/// let url = Url::try_from("file://etc/config/file.toml?skip_errors=all").expect("Valid URL");
+/// let options: MyOptions = deserialize_query_string(loader_name, &url).expect("Parse options");
+/// assert_eq!(options, MyOptions{skip_errors: SoftErrors::new_all()});
+/// assert!(options.skip_errors.skip_all());
+///
+/// let url = Url::try_from("file://etc/config/file.toml?skip_errors=NotFound.Permission").expect("Valid URL");
+/// let options: MyOptions = deserialize_query_string(loader_name, &url).expect("Parse options");
+/// let skip_errors = options.skip_errors;
+/// assert!(skip_errors.contains(&MySoftErrors::NotFound));
+/// assert!(skip_errors.contains(&MySoftErrors::Permission));
+/// assert!(!skip_errors.contains(&MySoftErrors::Empty));
+/// assert!(!skip_errors.skip_all());
+/// assert_eq!(
+///     skip_errors.maybe_soft_error_list(),
+///       Some(&Vec::from([MySoftErrors::NotFound, MySoftErrors::Permission]))
+/// );
+/// ```
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SoftErrors<T> {
+    All,
+    List(Vec<T>),
+}
+
+struct SoftErrorsVisitor<T> {
+    _marker: PhantomData<T>,
 }
 
 /// A trait to load configurations for one or more plugins.
@@ -113,10 +166,9 @@ pub trait ConfigurationLoader: Send + Sync + Debug {
 }
 
 #[cfg(feature = "qs")]
-/// Checks query-string part of URL and tries to deserialize it to provided type.
+/// Checks query-string part of URL and tries to deserialize it to provided type. (`qs` Cargo feature)
 ///
-/// See supported syntax from [serde_qs].
-/// This function is only usable if `qs` Cargo feature is enabled.
+/// For usage example see [SoftErrors].
 pub fn deserialize_query_string<T: serde::de::DeserializeOwned>(
     loader_name: impl AsRef<str>,
     url: &Url,
@@ -128,6 +180,117 @@ pub fn deserialize_query_string<T: serde::de::DeserializeOwned>(
             url: url.to_string(),
         }
     })
+}
+
+impl<'de, T: Deserialize<'de>> SoftErrors<T> {
+    pub fn new_all() -> Self {
+        Self::All
+    }
+
+    pub fn new_list() -> Self {
+        Self::List(Vec::with_capacity(0))
+    }
+
+    pub fn skip_all(&self) -> bool {
+        matches!(self, Self::All)
+    }
+
+    pub fn add_soft_error(&mut self, soft_error: T) {
+        if let Self::List(soft_errors) = self {
+            soft_errors.push(soft_error);
+        }
+    }
+
+    pub fn with_soft_error(mut self, soft_error: T) -> Self {
+        self.add_soft_error(soft_error);
+        self
+    }
+
+    pub fn maybe_soft_error_list(&self) -> Option<&Vec<T>> {
+        if let Self::List(soft_errors) = self {
+            Some(soft_errors)
+        } else {
+            None
+        }
+    }
+
+    pub fn maybe_soft_error_list_mut(&mut self) -> Option<&mut Vec<T>> {
+        if let Self::List(soft_errors) = self {
+            Some(soft_errors)
+        } else {
+            None
+        }
+    }
+}
+
+impl<'de, T: Deserialize<'de> + PartialEq> SoftErrors<T> {
+    pub fn contains(&self, soft_error: &T) -> bool {
+        if let Self::List(soft_errors) = self {
+            soft_errors.contains(soft_error)
+        } else {
+            true
+        }
+    }
+}
+
+impl<'de, T: Deserialize<'de>> Default for SoftErrors<T> {
+    fn default() -> Self {
+        Self::new_list()
+    }
+}
+
+impl<'de, T> Visitor<'de> for SoftErrorsVisitor<T>
+where
+    T: Deserialize<'de>,
+{
+    type Value = SoftErrors<T>;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("`all` or dot separated soft errors for configuration loader")
+    }
+
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+    where
+        E: Error,
+    {
+        let parts: Vec<_> = v
+            .split('.')
+            .filter(|item| *item != "")
+            .map(String::from)
+            .collect();
+        if parts.contains(&"all".to_string()) {
+            Ok(SoftErrors::All)
+        } else {
+            Ok(SoftErrors::List(Vec::deserialize(
+                parts.into_deserializer(),
+            )?))
+        }
+    }
+
+    fn visit_borrowed_str<E>(self, v: &'de str) -> Result<Self::Value, E>
+    where
+        E: Error,
+    {
+        self.visit_str(v)
+    }
+
+    fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
+    where
+        E: Error,
+    {
+        self.visit_str(v.as_str())
+    }
+}
+
+impl<'de, T: Deserialize<'de>> Deserialize<'de> for SoftErrors<T> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_str(SoftErrorsVisitor {
+            _marker: PhantomData,
+        })
+    }
 }
 
 impl ConfigurationLoadError {
