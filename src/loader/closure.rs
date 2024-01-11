@@ -26,7 +26,7 @@
 //! };
 //! let url = "xyz:///my/own/path?my_option=value".parse().unwrap();
 //! let loader = ConfigurationLoaderFn::new(loader_name, Box::new(loader_fn), url_scheme);
-//! let loaded = loader.try_load(&url, None, false).unwrap();
+//! let loaded = loader.load(&url, None, false).unwrap();
 //! assert_eq!(loaded.len(), 1);
 //! ```
 //!
@@ -117,7 +117,7 @@ impl ConfigurationLoader for ConfigurationLoaderFn {
         self.scheme_list.clone()
     }
 
-    fn try_load(
+    fn load(
         &self,
         url: &Url,
         maybe_whitelist: Option<&[String]>,

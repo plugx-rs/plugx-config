@@ -441,7 +441,7 @@ pub fn load(
                 .find(|loader| loader.scheme_list().contains(&scheme_string))
             {
                 loader
-                    .try_load(url, maybe_whitelist, skip_soft_errors)
+                    .load(url, maybe_whitelist, skip_soft_errors)
                     .map(|loaded_list| {
                         loaded_list
                             .into_iter()

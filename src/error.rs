@@ -23,7 +23,7 @@ pub enum ConfigurationError {
         url: Url,
         source: ConfigurationParserError,
     },
-    /// Errors from [plugx_input::validation::InputValidateError]
+    /// Errors from [plugx_input::schema::InputSchemaError]
     #[error(transparent)]
     Validate {
         #[from]

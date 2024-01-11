@@ -26,7 +26,7 @@
 //! // loader.add_skippable_error(SkippbaleErrorKind::NotFound)
 //!
 //! // Load all configurations inside directory:
-//! let loaded = loader.try_load(&url, None, false).unwrap();
+//! let loaded = loader.load(&url, None, false).unwrap();
 //! assert_eq!(loaded.len(), 3);
 //! let (_, foo) = loaded.iter().find(|(plugin_name, _)| plugin_name == "foo").expect("`foo` plugin config");
 //! assert_eq!(foo.maybe_format(), Some(&"json".to_string()));
@@ -35,14 +35,14 @@
 //!
 //! // Only load `foo` and `bar`:
 //! let whitelist = ["foo".into(), "bar".into()].to_vec();
-//! let loaded = loader.try_load(&url, Some(&whitelist), false).unwrap();
+//! let loaded = loader.load(&url, Some(&whitelist), false).unwrap();
 //! assert_eq!(loaded.len(), 2);
 //!
 //! // Load just one file:
 //! let qux = tmp_dir.path().join("qux.env");
 //! fs::write(&qux, "hello=\"world\"").unwrap();
 //! let url = Url::try_from(format!("file://{}", qux.to_str().unwrap()).as_str()).unwrap();
-//! let loaded = loader.try_load(&url, None, false).unwrap();
+//! let loaded = loader.load(&url, None, false).unwrap();
 //! assert_eq!(loaded.len(), 1);
 //! ```
 //!
@@ -163,7 +163,7 @@ pub mod utils {
                         Err(ConfigurationLoadError::Load {
                             loader: NAME.to_string(),
                             url: url.clone(),
-                            description: "load directory file list".to_string(),
+                            description: "load directory file list".to_string().into(),
                             source: error.into(),
                         })
                     }
@@ -175,11 +175,11 @@ pub mod utils {
                     let mut url = url.clone();
                     url.set_query(None);
                     return Err(ConfigurationLoadError::Duplicate {
-                        loader: NAME.to_string(),
+                        loader: NAME.to_string().into(),
                         url,
-                        plugin: plugin_name.to_string(),
-                        format_1: other_format.to_string(),
-                        format_2: format.to_string(),
+                        plugin: plugin_name.to_string().into(),
+                        format_1: other_format.to_string().into(),
+                        format_2: format.to_string().into(),
                     });
                 } else {
                     plugins.insert(plugin_name, format);
@@ -337,9 +337,9 @@ impl ConfigurationLoaderFs {
         loader::deserialize_query_string::<ConfigurationLoaderFsOptions>(NAME, url).map(
             |mut options| {
                 if let Some(soft_errors) = self.options.soft_errors.maybe_soft_error_list() {
-                    soft_errors.into_iter().for_each(|soft_error| {
-                        options.soft_errors.add_soft_error(soft_error.clone())
-                    })
+                    soft_errors
+                        .iter()
+                        .for_each(|soft_error| options.soft_errors.add_soft_error(*soft_error))
                 }
                 options
             },
@@ -357,7 +357,7 @@ impl ConfigurationLoader for ConfigurationLoaderFs {
         SCHEME_LIST.iter().cloned().map(String::from).collect()
     }
 
-    fn try_load(
+    fn load(
         &self,
         url: &Url,
         maybe_whitelist: Option<&[String]>,
@@ -390,7 +390,7 @@ impl ConfigurationLoader for ConfigurationLoaderFs {
                         Err(ConfigurationLoadError::Load {
                             loader: NAME.to_string(),
                             url: entity.url().clone(),
-                            description: "read contents of file".to_string(),
+                            description: "read contents of file".to_string().into(),
                             source: error.into(),
                         })
                     }

@@ -60,18 +60,18 @@ pub enum ConfigurationLoadError {
     /// Found more than one configuration with two different formats (extensions) for the same plugin.
     #[error("{loader} configuration loader found duplicate configurations `{url}/{plugin}.({format_1}|{format_2})`")]
     Duplicate {
-        loader: String,
+        loader: Box<String>,
         url: Url,
-        plugin: String,
-        format_1: String,
-        format_2: String,
+        plugin: Box<String>,
+        format_1: Box<String>,
+        format_2: Box<String>,
     },
     /// Could not load the configuration.
     #[error("{loader} configuration loader could not {description} `{url}`")]
     Load {
         loader: String,
         url: Url,
-        description: String,
+        description: Box<String>,
         source: anyhow::Error,
     },
     #[error("Could not found a loader that supports URL scheme `{scheme}` in given URL `{url}`")]
@@ -154,7 +154,7 @@ pub trait ConfigurationLoader: Send + Sync + Debug {
     /// * Checks whitelist to load just provided plugins configurations.
     /// * Attempts to load configurations.
     /// * Tries to set format for each [ConfigurationEntity].
-    fn try_load(
+    fn load(
         &self,
         url: &Url,
         maybe_whitelist: Option<&[String]>,
@@ -252,7 +252,7 @@ where
     {
         let parts: Vec<_> = v
             .split('.')
-            .filter(|item| *item != "")
+            .filter(|item| !item.is_empty())
             .map(String::from)
             .collect();
         if parts.contains(&"all".to_string()) {

@@ -23,7 +23,7 @@
 //!
 //! // We do not set `whitelist` so we're going to load all plugins' configurations:
 //! let mut maybe_whitelist = None;
-//! let result = loader.try_load(&url, maybe_whitelist, false).unwrap();
+//! let result = loader.load(&url, maybe_whitelist, false).unwrap();
 //! let (_, foo) = result
 //!     .iter()
 //!     .find(|(plugin_name, _)| plugin_name == "foo")
@@ -38,7 +38,7 @@
 //! // Only load `foo` plugin configuration:
 //! let whitelist = ["foo".to_string()].to_vec();
 //! maybe_whitelist = Some(&whitelist);
-//! let result = loader.try_load(&url, maybe_whitelist, false).unwrap();
+//! let result = loader.load(&url, maybe_whitelist, false).unwrap();
 //! assert!(result.iter().find(|(plugin_name, _)| plugin_name == "foo").is_some());
 //! assert!(result.iter().find(|(plugin_name, _)| plugin_name == "qux").is_none());
 //! ```
@@ -157,7 +157,7 @@ impl ConfigurationLoader for ConfigurationLoaderEnv {
     }
 
     /// This loader does not support `skip_soft_errors`.  
-    fn try_load(
+    fn load(
         &self,
         url: &Url,
         maybe_whitelist: Option<&[String]>,
