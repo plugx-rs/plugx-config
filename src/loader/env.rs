@@ -49,6 +49,7 @@ use crate::{
     entity::ConfigurationEntity,
     loader::{self, ConfigurationLoadError, ConfigurationLoader},
 };
+use cfg_if::cfg_if;
 use serde::Deserialize;
 use std::{env, fmt::Debug};
 use url::Url;
@@ -210,6 +211,23 @@ impl ConfigurationLoader for ConfigurationLoaderEnv {
                 (plugin_name, key, value)
             })
             .filter(|(_, key, _)| !key.is_empty())
+            .map(|(_plugin_name, _key, _value)| {
+                cfg_if! {
+                    if #[cfg(feature = "tracing")] {
+                        tracing::trace!(
+                            plugin=_plugin_name,
+                            key=_key,
+                            value=_value,
+                            "Detected environment-variable"
+                        );
+                    } else if #[cfg(feature = "logging")] {
+                        log::trace!(
+                            "msg=\"Detected environment-variable\" plugin={_plugin_name:?} key={_key:?} value={_value:?}"
+                        );
+                    }
+                }
+                (_plugin_name, _key, _value)
+            })
             .filter(|(plugin_name, _, _)| {
                 maybe_whitelist
                     .as_ref()
@@ -236,6 +254,25 @@ impl ConfigurationLoader for ConfigurationLoaderEnv {
                         .with_format("env")
                         .with_contents(contents),
                 )
+            })
+            .map(|(_plugin_name, _configuration)| {
+                cfg_if! {
+                    if #[cfg(feature = "tracing")] {
+                        tracing::trace!(
+                            plugin=_plugin_name,
+                            format=_configuration.maybe_format().unwrap_or(&"<unknown>".to_string()),
+                            contents=_configuration.maybe_contents().unwrap(),
+                            "Detected configuration from environment-variable"
+                        );
+                    } else if #[cfg(feature = "logging")] {
+                        log::trace!(
+                            "msg=\"Detected configuration from environment-variable\" plugin={_plugin_name:?} format={:?} contents={:?}",
+                            _configuration.maybe_format().unwrap_or(&"<unknown>".to_string()),
+                            _configuration.maybe_contents().unwrap(),
+                        );
+                    }
+                }
+                (_plugin_name, _configuration)
             })
             .collect())
     }

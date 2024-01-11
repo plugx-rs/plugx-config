@@ -34,6 +34,7 @@
 
 use crate::parser::ConfigurationParser;
 use anyhow::anyhow;
+use cfg_if::cfg_if;
 use plugx_input::Input;
 use std::fmt::{Debug, Display, Formatter};
 
@@ -68,7 +69,26 @@ impl ConfigurationParser for ConfigurationParserJson {
     }
 
     fn try_parse(&self, bytes: &[u8]) -> anyhow::Result<Input> {
-        serde_json::from_slice(bytes).map_err(|error| anyhow!(error))
+        serde_json::from_slice(bytes)
+            .map(|parsed: Input| {
+                cfg_if! {
+                    if #[cfg(feature = "tracing")] {
+                        tracing::trace!(
+                            input=String::from_utf8_lossy(bytes).to_string(),
+                            output=%parsed,
+                            "Parsed JSON contents"
+                        );
+                    } else if #[cfg(feature = "logging")] {
+                        log::trace!(
+                            "msg=\"Parsed JSON contents\" input={:?} output={:?}",
+                            String::from_utf8_lossy(bytes).to_string(),
+                            parsed.to_string()
+                        );
+                    }
+                }
+                parsed
+            })
+            .map_err(|error| anyhow!(error))
     }
 
     fn is_format_supported(&self, bytes: &[u8]) -> Option<bool> {

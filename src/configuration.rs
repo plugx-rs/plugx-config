@@ -39,15 +39,15 @@ impl Configuration {
                 if #[cfg(feature = "tracing")] {
                     tracing::debug!("Initialized with no parser")
                 } else if #[cfg(feature = "logging")] {
-                    log::debug!("message=\"Initialized with no parser\"")
+                    log::debug!("msg=\"Initialized with no parser\"")
                 }
             }
         } else {
             cfg_if! {
                 if #[cfg(feature = "tracing")] {
-                    tracing::debug!(parser_list=?parser_name_list, "Initialized with parser(s)")
+                    tracing::debug!(parsers=?parser_name_list, "Initialized with parser(s)")
                 } else if #[cfg(feature = "logging")] {
-                    log::debug!("parser_list={parser_name_list:?} message=\"Initialized with parser(s)\"")
+                    log::debug!("msg=\"Initialized with parser(s)\" parsers={parser_name_list:?}")
                 }
             }
         }
@@ -73,56 +73,43 @@ impl Configuration {
 
     pub fn add_url(&mut self, url: Url) -> Result<(), ConfigurationLoadError> {
         let scheme = url.scheme().to_string();
-        if self
+        let maybe_loader_name = if let Some(loader) = self
             .loader_list
             .iter()
-            .any(|loader| loader.scheme_list().contains(&scheme))
+            .find(|loader| loader.scheme_list().contains(&scheme))
         {
+            self.url_list.push(url.clone());
+            Some(loader.name())
+        } else {
+            #[allow(unused_mut)]
+            let mut included_loader_list: Vec<Box<dyn ConfigurationLoader>> = Vec::new();
+
+            #[cfg(feature = "env")]
+            included_loader_list.push(Box::new(crate::loader::env::ConfigurationLoaderEnv::new()));
+
+            #[cfg(feature = "fs")]
+            included_loader_list.push(Box::new(crate::loader::fs::ConfigurationLoaderFs::new()));
+
+            included_loader_list
+                .into_iter()
+                .find(|loader| loader.scheme_list().contains(&scheme))
+                .map(|loader| {
+                    let name = loader.name();
+                    self.add_boxed_loader(loader);
+                    self.url_list.push(url.clone());
+                    name
+                })
+        };
+        maybe_loader_name.map(|_loader_name| {
             cfg_if! {
                 if #[cfg(feature = "tracing")] {
-                    tracing::debug!(url=%url, "Added URL")
+                    tracing::debug!(url=%url, loader=_loader_name, "Added configuration URL");
                 } else if #[cfg(feature = "logging")] {
-                    log::debug!("url=\"{url}\" message=\"Added URL\"")
+                    log::debug!("msg=\"Added configuration URL\", url=\"{url}\" loader={_loader_name:?}");
                 }
             }
-            self.url_list.push(url);
-            return Ok(());
-        }
-        #[cfg(feature = "env")]
-        {
-            use crate::loader::env::{ConfigurationLoaderEnv, SCHEME_LIST};
-
-            if SCHEME_LIST.contains(&scheme.as_str()) {
-                self.add_boxed_loader(Box::new(ConfigurationLoaderEnv::new()));
-                cfg_if! {
-                    if #[cfg(feature = "tracing")] {
-                        tracing::debug!(url=%url, "Added URL")
-                    } else if #[cfg(feature = "logging")] {
-                        log::debug!("url=\"{url}\" message=\"Added URL\"")
-                    }
-                }
-                self.url_list.push(url);
-                return Ok(());
-            };
-        }
-        #[cfg(feature = "fs")]
-        {
-            use crate::loader::fs::{ConfigurationLoaderFs, SCHEME_LIST};
-
-            if SCHEME_LIST.contains(&scheme.as_str()) {
-                self.add_boxed_loader(Box::new(ConfigurationLoaderFs::new()));
-                cfg_if! {
-                    if #[cfg(feature = "tracing")] {
-                        tracing::debug!(url=%url, "Added URL")
-                    } else if #[cfg(feature = "logging")] {
-                        log::debug!("url=\"{url}\" message=\"Added URL\"")
-                    }
-                }
-                self.url_list.push(url);
-                return Ok(());
-            };
-        }
-        Err(ConfigurationLoadError::LoaderNotFound { scheme, url })
+            Ok(())
+        }).unwrap_or(Err(ConfigurationLoadError::LoaderNotFound { scheme, url }))
     }
 
     pub fn remove_url(&mut self, url: &Url) -> bool {
@@ -133,7 +120,7 @@ impl Configuration {
                 if #[cfg(feature = "tracing")] {
                     tracing::debug!(url=%url, "Removed URL")
                 } else if #[cfg(feature = "logging")] {
-                    log::debug!("url=\"{url}\" message=\"Removed URL\"")
+                    log::debug!("msg=\"Removed URL\" url=\"{url}\"")
                 }
             }
             result = true;
@@ -188,9 +175,17 @@ impl Configuration {
     pub fn add_boxed_loader(&mut self, loader: Box<dyn ConfigurationLoader>) {
         cfg_if! {
             if #[cfg(feature = "tracing")] {
-                tracing::debug!(loader=loader.name(), schema_list=?loader.scheme_list(), "Added loader")
+                tracing::debug!(
+                    loader=loader.name(),
+                    schema_list=?loader.scheme_list(),
+                    "Added configuration loader"
+                );
             } else if #[cfg(feature = "logging")] {
-                log::debug!("loader={:?} schema_list={:?} message=\"Added loader\"", loader.name(), loader.scheme_list())
+                log::debug!(
+                    "msg=\"Added configuration loader\" loader={:?} schema_list={:?}",
+                    loader.name(),
+                    loader.scheme_list()
+                );
             }
         }
         self.loader_list.push(loader);
@@ -209,9 +204,17 @@ impl Configuration {
             let loader = self.loader_list.swap_remove(index);
             cfg_if! {
                 if #[cfg(feature = "tracing")] {
-                    tracing::debug!(loader=loader.name(), schema_list=?loader.scheme_list(), "Removed loader")
+                    tracing::debug!(
+                        loader=loader.name(),
+                        schema_list=?loader.scheme_list(),
+                        "Removed configuration loader"
+                    );
                 } else if #[cfg(feature = "logging")] {
-                    log::debug!("loader={:?} schema_list={:?} message=\"Removed loader\"", loader.name(), loader.scheme_list())
+                    log::debug!(
+                        "message=\"Removed configuration loader\" loader={:?} schema_list={:?}",
+                        loader.name(),
+                        loader.scheme_list()
+                    );
                 }
             }
             Some((loader, self.remove_scheme(scheme)))
@@ -262,10 +265,19 @@ impl Configuration {
     }
 
     pub fn add_boxed_parser(&mut self, parser: Box<dyn ConfigurationParser>) {
-        cfg_if! {if #[cfg(feature = "tracing")] {
-                tracing::debug!(parser=parser.name(), format_list=?parser.supported_format_list(), "Added parser")
+        cfg_if! {
+            if #[cfg(feature = "tracing")] {
+                tracing::debug!(
+                    parser=parser.name(),
+                    format_list=?parser.supported_format_list(),
+                    "Added configuration parser"
+                );
             } else if #[cfg(feature = "logging")] {
-                log::debug!("parser={:?} format_list={:?} message=\"Added parser\"", parser.name(), parser.supported_format_list())
+                log::debug!(
+                    "msg=\"Added configuration parser\" parser={:?} format_list={:?}",
+                    parser.name(),
+                    parser.supported_format_list()
+                );
             }
         }
         self.parser_list.push(parser);
@@ -282,9 +294,17 @@ impl Configuration {
             let parser = self.parser_list.swap_remove(index);
             cfg_if! {
                 if #[cfg(feature = "tracing")] {
-                    tracing::debug!(parser=parser.name(), format_list=?parser.supported_format_list(), "Removed parser")
+                    tracing::debug!(
+                        parser=parser.name(),
+                        format_list=?parser.supported_format_list(),
+                        "Removed configuration parser"
+                    );
                 } else if #[cfg(feature = "logging")] {
-                    log::debug!("parser={:?} format_list={:?} message=\"Removed parser\"", parser.name(), parser.supported_format_list())
+                    log::debug!(
+                        "msg=\"Removed configuration parser\" parser={:?} format_list={:?}",
+                        parser.name(),
+                        parser.supported_format_list()
+                    );
                 }
             }
             parser_list.push(parser)
@@ -332,7 +352,7 @@ impl Configuration {
                 if #[cfg(feature = "tracing")] {
                     tracing::warn!(key=key.as_ref(), "Whitelist environment-variable is set to empty")
                 } else if #[cfg(feature = "logging")] {
-                    log::warn!("key={:?} message=\"Whitelist environment-variable is set to empty\"", key.as_ref())
+                    log::warn!("msg=\"Whitelist environment-variable is set to empty\" key={:?}", key.as_ref())
                 }
             }
         } else {
@@ -340,7 +360,7 @@ impl Configuration {
                 if #[cfg(feature = "tracing")] {
                     tracing::info!(key=key.as_ref(), "Set whitelist from environment-variable")
                 } else if #[cfg(feature = "logging")] {
-                    log::info!("key={:?} message=\"Set whitelist from environment-variable\"", key.as_ref())
+                    log::info!("msg=\"Set whitelist from environment-variable\" key={:?}", key.as_ref())
                 }
             }
         }
@@ -373,7 +393,7 @@ impl Configuration {
             if #[cfg(feature = "tracing")] {
                 tracing::debug!(name=name, "Added to whitelist")
             } else if #[cfg(feature = "logging")] {
-                log::debug!("name={name:?} message=\"Added to whitelist\"")
+                log::debug!("msg=\"Added to whitelist\" name={name:?}")
             }
         }
         if let Some(whitelist) = self.maybe_whitelist.as_mut() {

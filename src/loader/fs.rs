@@ -84,12 +84,10 @@ impl ConfigurationLoaderFsOptions {
 
 /// Supported soft errors when loading filesystem contents.
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
+#[serde(rename_all = "kebab-case")]
 pub enum SoftErrorsFs {
-    WouldBlock,
-    Interrupted,
     NotFound,
     PermissionDenied,
-    TimedOut,
 }
 
 impl TryFrom<io::ErrorKind> for SoftErrorsFs {
@@ -97,11 +95,8 @@ impl TryFrom<io::ErrorKind> for SoftErrorsFs {
 
     fn try_from(value: io::ErrorKind) -> Result<Self, Self::Error> {
         match value {
-            io::ErrorKind::WouldBlock => Ok(Self::WouldBlock),
-            io::ErrorKind::Interrupted => Ok(Self::Interrupted),
             io::ErrorKind::NotFound => Ok(Self::NotFound),
             io::ErrorKind::PermissionDenied => Ok(Self::PermissionDenied),
-            io::ErrorKind::TimedOut => Ok(Self::TimedOut),
             _ => Err("Unhandled IO error".into()),
         }
     }
@@ -152,26 +147,26 @@ pub mod utils {
         if path.is_dir() {
             let list = match get_directory_file_list(&path, maybe_whitelist) {
                 Ok(list) => list,
-                Err(error)
-                    if skip_soft_errors
-                        && (options.soft_errors.skip_all() || options.contains(error.kind())) =>
-                {
-                    cfg_if! {
-                        if #[cfg(feature = "tracing")] {
-                            tracing::info!(path = ?path, skip_error=true, "Could not load directory contents");
-                        } else if #[cfg(feature = "logging")] {
-                            log::warn!("path={path:?} skip_error=true msg=\"Could not load directory contents\"");
-                        }
-                    }
-                    return Ok(Vec::new());
-                }
                 Err(error) => {
-                    return Err(ConfigurationLoadError::Load {
-                        loader: NAME.to_string(),
-                        url: url.clone(),
-                        description: "load directory file list".to_string(),
-                        source: error.into(),
-                    })
+                    return if skip_soft_errors
+                        && (options.soft_errors.skip_all() || options.contains(error.kind()))
+                    {
+                        cfg_if! {
+                            if #[cfg(feature = "tracing")] {
+                                tracing::info!(path=?path, skip_error=true, "Could not load directory contents");
+                            } else if #[cfg(feature = "logging")] {
+                                log::info!("msg=\"Could not load directory contents\" path={path:?} skip_error=true");
+                            }
+                        }
+                        Ok(Vec::new())
+                    } else {
+                        Err(ConfigurationLoadError::Load {
+                            loader: NAME.to_string(),
+                            url: url.clone(),
+                            description: "load directory file list".to_string(),
+                            source: error.into(),
+                        })
+                    }
                 }
             };
             let mut plugins: HashMap<&String, &String> = HashMap::with_capacity(list.len());
@@ -215,7 +210,10 @@ pub mod utils {
                     if #[cfg(feature = "tracing")] {
                         tracing::info!(url = ?url, skip_error=true, "Could not parse plugin name/format");
                     } else if #[cfg(feature = "logging")] {
-                        log::warn!("url={:?} skip_error=true msg=\"Could not parse plugin name/format\"", url.to_string());
+                        log::info!(
+                            "msg=\"Could not parse plugin name/format\" url={:?} skip_error=true",
+                            url.to_string()
+                        );
                     }
                 }
                 Ok(Vec::new())
@@ -230,9 +228,12 @@ pub mod utils {
             if skip_soft_errors && options.soft_errors.skip_all() {
                 cfg_if! {
                     if #[cfg(feature = "tracing")] {
-                        tracing::info!(url = ?url, skip_error=true, "URL is not pointing to a directory or regular file");
+                        tracing::info!(url=?url, skip_error=true, "URL is not pointing to a directory or regular file");
                     } else if #[cfg(feature = "logging")] {
-                        log::warn!("url={:?} skip_error=true msg=\"URL is not pointing to a directory or regular file\"", url.to_string());
+                        log::info!(
+                            "msg=\"URL is not pointing to a directory or regular file\" url={:?} skip_error=true",
+                            url.to_string()
+                        );
                     }
                 }
                 Ok(Vec::new())
@@ -244,12 +245,17 @@ pub mod utils {
                 })
             }
         } else if skip_soft_errors && options.contains(io::ErrorKind::NotFound) {
-            Err(ConfigurationLoadError::Load {
-                loader: NAME.to_string(),
-                url: url.clone(),
-                description: "find path".to_string(),
-                source: anyhow!(io::Error::from(io::ErrorKind::NotFound)),
-            })
+            cfg_if! {
+                if #[cfg(feature = "tracing")] {
+                    tracing::info!(url=?url, skip_error=true, "Could not find path");
+                } else if #[cfg(feature = "logging")] {
+                    log::info!(
+                        "msg=\"Could not find path\" url={:?} skip_error=true",
+                        url.to_string()
+                    );
+                }
+            }
+            Ok(Vec::new())
         } else {
             Err(ConfigurationLoadError::NotFound {
                 loader: NAME.to_string(),
@@ -272,16 +278,18 @@ pub mod utils {
                 } else {
                     cfg_if! {
                         if #[cfg(feature = "tracing")] {
-                            tracing::warn!(path = ?path, "Could not parse plugin name/format");
+                            tracing::warn!(path=?path, "Could not parse plugin name/format");
                         } else if #[cfg(feature = "logging")] {
-                            log::warn!("path={path:?} message=\"Could not parse plugin name/format\"");
+                            log::warn!("msg=\"Could not parse plugin name/format\" path={path:?}");
                         }
                     }
                     None
                 }
             })
             .filter(|(plugin_name, _, _)| {
-                maybe_whitelist.map(|whitelist| whitelist.contains(plugin_name)).unwrap_or(true)
+                maybe_whitelist
+                    .map(|whitelist| whitelist.contains(plugin_name))
+                    .unwrap_or(true)
             })
             .filter_map(|(plugin_name, format, path)| {
                 if path.is_file() {
@@ -289,9 +297,9 @@ pub mod utils {
                 } else {
                     cfg_if! {
                         if #[cfg(feature = "tracing")] {
-                            tracing::warn!(path = ?path, "This is not a regular file");
+                            tracing::warn!(path = ?path, "Path is not pointing to a regular file");
                         } else if #[cfg(feature = "logging")] {
-                            log::warn!("path={path:?} message=\"This is not a regular file\"");
+                            log::warn!("msg=\"Path is not pointing to a regular file\" path={path:?}");
                         }
                     }
                     None
@@ -344,6 +352,7 @@ impl ConfigurationLoader for ConfigurationLoaderFs {
         NAME.into()
     }
 
+    /// In this case "fs" and "file".
     fn scheme_list(&self) -> Vec<String> {
         SCHEME_LIST.iter().cloned().map(String::from).collect()
     }
@@ -360,23 +369,32 @@ impl ConfigurationLoader for ConfigurationLoaderFs {
         entity_list.iter_mut().try_for_each(|entity| {
             match utils::read_entity_contents(entity) {
                 Ok(_) => Ok(()),
-                Err(error) if skip_soft_errors && (self.options.soft_errors.skip_all() || self.options.contains(error.kind())) => {
-                    entity.url().path();
+                Err(error) => {
+                    if skip_soft_errors && (self.options.soft_errors.skip_all() || self.options.contains(error.kind())) {
                         cfg_if! {
-                        if #[cfg(feature = "tracing")] {
-                            tracing::info!(path = entity.url().path(), skip_error=true, "Could not read contents of file");
-                        } else if #[cfg(feature = "logging")] {
-                            log::warn!("path={:?} skip_error=true msg=\"Could not read contents of file\"", entity.url().path());
+                            if #[cfg(feature = "tracing")] {
+                                tracing::info!(
+                                    path=entity.url().path(),
+                                    skip_error=true,
+                                    "Could not read contents of file"
+                                );
+                            } else if #[cfg(feature = "logging")] {
+                                log::info!(
+                                    "msg=\"Could not read contents of file\" path={:?} skip_error=true",
+                                    entity.url().path()
+                                );
+                            }
                         }
+                        Ok(())
+                    } else {
+                        Err(ConfigurationLoadError::Load {
+                            loader: NAME.to_string(),
+                            url: entity.url().clone(),
+                            description: "read contents of file".to_string(),
+                            source: error.into(),
+                        })
                     }
-                    Ok(())
                 }
-                Err(error) => Err(ConfigurationLoadError::Load {
-                    loader: NAME.to_string(),
-                    url: entity.url().clone(),
-                    description: "read contents of file".to_string(),
-                    source: error.into(),
-                })
             }
         })?;
         let result = entity_list

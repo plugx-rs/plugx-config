@@ -28,6 +28,7 @@
 
 use crate::parser::ConfigurationParser;
 use anyhow::anyhow;
+use cfg_if::cfg_if;
 use plugx_input::Input;
 use std::fmt::Debug;
 
@@ -52,7 +53,27 @@ impl ConfigurationParser for ConfigurationParserToml {
     fn try_parse(&self, bytes: &[u8]) -> anyhow::Result<Input> {
         String::from_utf8(bytes.to_vec())
             .map_err(|error| anyhow!("Could not decode contents to UTF-8 ({error})"))
-            .and_then(|text| toml::from_str(text.as_str()).map_err(|error| anyhow!(error)))
+            .and_then(|text| {
+                toml::from_str(text.as_str())
+                    .map(|parsed: Input| {
+                        cfg_if! {
+                            if #[cfg(feature = "tracing")] {
+                                tracing::trace!(
+                                    input=text,
+                                    output=%parsed,
+                                    "Parsed TOML contents"
+                                );
+                            } else if #[cfg(feature = "logging")] {
+                                log::trace!(
+                                    "msg=\"Parsed TOML contents\" input={text:?} output={:?}",
+                                    parsed.to_string()
+                                );
+                            }
+                        }
+                        parsed
+                    })
+                    .map_err(|error| anyhow!(error))
+            })
     }
 
     fn is_format_supported(&self, bytes: &[u8]) -> Option<bool> {
