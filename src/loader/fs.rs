@@ -69,7 +69,7 @@ pub struct ConfigurationLoaderFs {
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
-#[serde(default)]
+#[serde(default, rename_all = "kebab-case")]
 struct ConfigurationLoaderFsOptions {
     soft_errors: SoftErrors<SoftErrorsFs>,
 }

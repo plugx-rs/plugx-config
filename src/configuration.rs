@@ -56,6 +56,10 @@ impl Configuration {
 }
 
 impl Configuration {
+    pub fn url_list(&self) -> &[Url] {
+        self.url_list.as_slice()
+    }
+
     pub fn has_url(&mut self, url: &Url) -> bool {
         self.url_list.contains(url)
     }
@@ -224,7 +228,7 @@ impl Configuration {
     }
 
     pub fn load(
-        &mut self,
+        &self,
         skip_soft_errors: bool,
     ) -> Result<Vec<(String, Vec<ConfigurationEntity>)>, ConfigurationLoadError> {
         load(
@@ -312,8 +316,8 @@ impl Configuration {
         parser_list
     }
 
-    pub fn parse(
-        &mut self,
+    pub fn load_and_parse(
+        &self,
         skip_soft_errors: bool,
     ) -> Result<Vec<(String, Vec<ConfigurationEntity>)>, ConfigurationError> {
         let mut load_result = self.load(skip_soft_errors)?;
@@ -407,20 +411,20 @@ impl Configuration {
 }
 
 impl Configuration {
-    pub fn merge(
-        &mut self,
+    pub fn load_parse_merge(
+        &self,
         skip_soft_errors: bool,
     ) -> Result<Vec<(String, Input)>, ConfigurationError> {
-        let mut parsed = self.parse(skip_soft_errors)?;
+        let mut parsed = self.load_and_parse(skip_soft_errors)?;
         merge(parsed.as_mut())
     }
 
-    pub fn validate(
-        &mut self,
+    pub fn load_parse_merge_validate(
+        &self,
         schema_list: &[(String, InputSchemaType)],
         skip_soft_errors: bool,
     ) -> Result<Vec<(String, Input)>, ConfigurationError> {
-        let mut merged = self.merge(skip_soft_errors)?;
+        let mut merged = self.load_parse_merge(skip_soft_errors)?;
         validate(merged.as_mut(), schema_list)
     }
 }

@@ -67,10 +67,14 @@
                                    Vec<(Name, Config)>
 ```
 
-## Demo
+## Basic usage
+```rust
+
+
+```
 #### Preparation of the demo
 In this example we're going to load our plugins' configurations from a directory and environment-variables.  
-Here we have four configuration files for four plugins `foo`, `bar`, `baz`, and `qux`. This is our example `etc` directory:
+Here we have four configuration files for four plugins `foo`, `bar`, `baz`, and `qux` inside our example `etc` directory:
 ```shell
 $ tree tests/etc
 ```
@@ -81,6 +85,8 @@ tests/etc
 ├── foo.env
 └── qux.yml
 ```
+<br/>
+
 ```shell
 $ cat tests/etc/bar.json
 ```
@@ -120,4 +126,33 @@ https:
   follow_redirects: false
   insecure: false
 ```
+<br/>
 
+Additionally, we set the following environment-variables:
+```shell
+$ export APP_NAME__FOO__SERVER__ADDRESS="127.0.0.1"
+$ export APP_NAME__BAR__SQLITE__FILE="/path/to/app.db"
+$ export APP_NAME__BAZ__LOGGING__LEVEL="debug"
+$ export APP_NAME__QUX__HTTPS__INSECURE="false"
+```
+<br/>
+
+Usage:
+```rust
+use plugx_config::{ext::url::Url, Configuration};
+use plugx_input::schema::InputSchemaType;
+use std::{collections::HashMap, env, fs};
+
+// Add our URLs.
+// Generally you need to get them from commandline arguments or somewhere else:
+let env_url: Url = "env://?prefix=APP_NAME".parse().expect("Valid URL");
+let current_directory = env::current_dir().expect("CWD");
+let directory_url: Url = format!("file://{}/tests/etc/", current_directory.to_str().unwrap())
+    .parse()
+    .expect("Valid URL");
+
+// Initialize plugins' configurations:
+let mut configuration = Configuration::new().with_url(env_url)?.with_url(directory_url)?;
+
+
+```

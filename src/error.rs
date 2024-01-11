@@ -32,3 +32,15 @@ pub enum ConfigurationError {
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }
+
+impl Into<ConfigurationError> for url::ParseError {
+    fn into(self) -> ConfigurationError {
+        ConfigurationError::Other(anyhow::anyhow!(self))
+    }
+}
+
+impl From<url::ParseError> for ConfigurationError {
+    fn from(value: url::ParseError) -> Self {
+        Self::Other(anyhow::anyhow!(value))
+    }
+}

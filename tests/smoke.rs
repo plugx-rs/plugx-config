@@ -23,9 +23,7 @@ fn smoke() -> Result<(), anyhow::Error> {
     env::set_var("APP_NAME__BAZ__LOGGING__LEVEL", "debug");
     env::set_var("APP_NAME__QUX__HTTPS__INSECURE", "false");
 
-    let env_url: Url = "env://?prefix=APP_NAME__&key_separator=__"
-        .parse()
-        .expect("Valid URL");
+    let env_url: Url = "env://?prefix=APP_NAME".parse().expect("Valid URL");
     let current_dir = env::current_dir()
         .unwrap()
         .join("tests")
