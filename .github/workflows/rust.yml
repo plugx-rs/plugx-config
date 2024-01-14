@@ -59,20 +59,20 @@ jobs:
             name: Test Windows MSVC
     steps:
       - uses: actions/checkout@v4
-      - name: Installing macOS dependencies
+      - name: Maybe install macOS deps
         if: contains(matrix.os, 'macos')
         run: |
           brew install make
-      - name: Installing Rust target
+      - name: Install Rust target
         run: |
           rustup target add ${{ matrix.target }}
-      - name: Installing Linux dependencies for `musl`
+      - name: Maybe install Linux deps
         if: contains(matrix.os, 'ubuntu') && contains(matrix.target, 'musl')
         run: |
           sudo apt-get update
           sudo apt-get install -y -qq musl-dev musl-tools
       - name: Test
-        run: make test
+        run: make test TARGET_OPTION="--target=${{ matrix.target }}"
 
   examples:
     runs-on: ubuntu-latest
@@ -87,5 +87,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Check style
+      - name: Documentation
         run: make docs
