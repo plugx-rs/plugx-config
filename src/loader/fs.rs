@@ -70,7 +70,8 @@ pub struct ConfigurationLoaderFs {
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default, rename_all = "kebab-case")]
-struct ConfigurationLoaderFsOptions {
+pub struct ConfigurationLoaderFsOptions {
+    strip_slash: Option<bool>,
     soft_errors: SoftErrors<SoftErrorsFs>,
 }
 
@@ -105,6 +106,7 @@ impl TryFrom<io::ErrorKind> for SoftErrorsFs {
 #[doc(hidden)]
 pub mod utils {
     use super::*;
+    use std::env::current_dir;
     use std::path::Path;
 
     #[inline]
@@ -143,7 +145,19 @@ pub mod utils {
         maybe_whitelist: Option<&[String]>,
         skip_soft_errors: bool,
     ) -> Result<Vec<ConfigurationEntity>, ConfigurationLoadError> {
-        let path = PathBuf::from(url.path());
+        let path = if url.path() == "/" {
+            current_dir().map_err(|_| {
+                ConfigurationLoadError::Other(anyhow!("Could not fetch current working directory"))
+            })?
+        } else if options.strip_slash.unwrap_or(false) && url.path().starts_with('/') {
+            PathBuf::from(
+                url.path()
+                    .strip_prefix('/')
+                    .expect("URL path with length > 1"),
+            )
+        } else {
+            PathBuf::from(url.path())
+        };
         if path.is_dir() {
             let list = match get_directory_file_list(&path, maybe_whitelist) {
                 Ok(list) => list,
@@ -208,7 +222,7 @@ pub mod utils {
             } else if skip_soft_errors && options.soft_errors.skip_all() {
                 cfg_if! {
                     if #[cfg(feature = "tracing")] {
-                        tracing::info!(url = ?url, skip_error=true, "Could not parse plugin name/format");
+                        tracing::info!(url=%url, skip_error=true, "Could not parse plugin name/format");
                     } else if #[cfg(feature = "logging")] {
                         log::info!(
                             "msg=\"Could not parse plugin name/format\" url={:?} skip_error=true",
@@ -228,7 +242,7 @@ pub mod utils {
             if skip_soft_errors && options.soft_errors.skip_all() {
                 cfg_if! {
                     if #[cfg(feature = "tracing")] {
-                        tracing::info!(url=?url, skip_error=true, "URL is not pointing to a directory or regular file");
+                        tracing::info!(url=%url, skip_error=true, "URL is not pointing to a directory or regular file");
                     } else if #[cfg(feature = "logging")] {
                         log::info!(
                             "msg=\"URL is not pointing to a directory or regular file\" url={:?} skip_error=true",
@@ -247,7 +261,7 @@ pub mod utils {
         } else if skip_soft_errors && options.contains(io::ErrorKind::NotFound) {
             cfg_if! {
                 if #[cfg(feature = "tracing")] {
-                    tracing::info!(url=?url, skip_error=true, "Could not find path");
+                    tracing::info!(url=%url, skip_error=true, "Could not find path");
                 } else if #[cfg(feature = "logging")] {
                     log::info!(
                         "msg=\"Could not find path\" url={:?} skip_error=true",
@@ -297,7 +311,7 @@ pub mod utils {
                 } else {
                     cfg_if! {
                         if #[cfg(feature = "tracing")] {
-                            tracing::warn!(path = ?path, "Path is not pointing to a regular file");
+                            tracing::warn!(path=?path, "Path is not pointing to a regular file");
                         } else if #[cfg(feature = "logging")] {
                             log::warn!("msg=\"Path is not pointing to a regular file\" path={path:?}");
                         }
@@ -309,8 +323,24 @@ pub mod utils {
     }
 
     #[inline]
-    pub fn read_entity_contents(entity: &mut ConfigurationEntity) -> Result<(), io::Error> {
-        fs::read_to_string(PathBuf::from(entity.url().path())).map(|contents| {
+    pub fn read_entity_contents(
+        entity: &mut ConfigurationEntity,
+        options: &ConfigurationLoaderFsOptions,
+    ) -> Result<(), io::Error> {
+        let path = if entity.url().path() == "/" {
+            current_dir()?
+        } else if options.strip_slash.unwrap_or(false) && entity.url().path().starts_with('/') {
+            PathBuf::from(
+                entity
+                    .url()
+                    .path()
+                    .strip_prefix('/')
+                    .expect("URL path with length > 1"),
+            )
+        } else {
+            PathBuf::from(entity.url().path())
+        };
+        fs::read_to_string(path).map(|contents| {
             entity.set_contents(contents);
         })
     }
@@ -367,10 +397,10 @@ impl ConfigurationLoader for ConfigurationLoaderFs {
         let mut entity_list =
             utils::get_entity_list(url, &options, maybe_whitelist, skip_soft_errors)?;
         entity_list.iter_mut().try_for_each(|entity| {
-            match utils::read_entity_contents(entity) {
+            match utils::read_entity_contents(entity, &options) {
                 Ok(_) => Ok(()),
                 Err(error) => {
-                    if skip_soft_errors && (self.options.soft_errors.skip_all() || self.options.contains(error.kind())) {
+                    if skip_soft_errors && (options.soft_errors.skip_all() || options.contains(error.kind())) {
                         cfg_if! {
                             if #[cfg(feature = "tracing")] {
                                 tracing::info!(
