@@ -41,6 +41,7 @@
 
 use crate::parser::ConfigurationParser;
 use anyhow::{anyhow, bail};
+use cfg_if::cfg_if;
 use plugx_input::{position, position::InputPosition, Input};
 use std::fmt::{Debug, Display, Formatter};
 
@@ -52,7 +53,7 @@ pub struct ConfigurationParserEnv {
 impl Default for ConfigurationParserEnv {
     fn default() -> Self {
         Self {
-            separator: crate::loader::env::default::option::separator(),
+            separator: crate::loader::env::default::separator(),
         }
     }
 }
@@ -97,6 +98,17 @@ impl ConfigurationParser for ConfigurationParserEnv {
                 .as_slice(),
         )
         .map_err(|error| anyhow!(error))?;
+        cfg_if! {
+            if #[cfg(feature = "tracing")] {
+                tracing::trace!(
+                    input=text,
+                    output=%map,
+                    "Parsed environment-variable contents"
+                );
+            } else if #[cfg(feature = "logging")] {
+                log::trace!("msg=\"Parsed environment-variable contents\" input={text:?} output={:?}", map.to_string());
+            }
+        }
         Ok(map)
     }
 

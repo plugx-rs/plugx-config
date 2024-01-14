@@ -2,14 +2,15 @@
 //!
 //! ### Example
 //! ```rust
-//! use std::collections::HashMap;
-//! use url::Url;
-//! use plugx_config::entity::ConfigurationEntity;
-//! use plugx_config::loader::{ConfigurationLoader, closure::ConfigurationLoaderFn};
+//! use plugx_config::{
+//!     entity::ConfigurationEntity,
+//!     loader::{ConfigurationLoader, closure::ConfigurationLoaderFn},
+//!     ext::url::Url,
+//! };
 //!
 //! let url_scheme = "xyz";
 //! let loader_name = "my-custom-loader";
-//! let loader_fn = move |url: &Url, maybe_whitelist: Option<&[String]>| {
+//! let loader_fn = move |url: &Url, maybe_whitelist: Option<&[String]>, skip_soft_errors: bool| {
 //!     // TODO: check `url` and get my own options
 //!     let mut result = Vec::new();
 //!     // TODO: check whitelist
@@ -25,11 +26,13 @@
 //! };
 //! let url = "xyz:///my/own/path?my_option=value".parse().unwrap();
 //! let loader = ConfigurationLoaderFn::new(loader_name, Box::new(loader_fn), url_scheme);
-//! let loaded = loader.try_load(&url, None).unwrap();
-//! assert!(loaded.len() == 1);
+//! let loaded = loader.load(&url, None, false).unwrap();
+//! assert_eq!(loaded.len(), 1);
 //! ```
 //!
-//! See [crate::loader] documentation to known how loaders work.
+//! * See [crate::loader] documentation to known how loaders work.
+//! * To detect your own options easily see [crate::loader::deserialize_query_string].
+//! * To detect your soft errors and apply them see [crate::loader::SoftErrors].
 
 use crate::{
     entity::ConfigurationEntity,
@@ -38,11 +41,12 @@ use crate::{
 use std::fmt::{Debug, Formatter};
 use url::Url;
 
-/// A `|&Url, Option<&[String]>| -> Result<HashMap<_, _>, ConfigurationLoadError>` [Fn]
+/// A `|&Url, Option<&[String]>, bool| -> Result<Vec<String, ConfigurationEntity>, ConfigurationLoadError>` [Fn]
 pub type BoxedLoaderFn = Box<
     dyn Fn(
             &Url,
             Option<&[String]>,
+            bool,
         ) -> Result<Vec<(String, ConfigurationEntity)>, ConfigurationLoadError>
         + Send
         + Sync,
@@ -113,11 +117,12 @@ impl ConfigurationLoader for ConfigurationLoaderFn {
         self.scheme_list.clone()
     }
 
-    fn try_load(
+    fn load(
         &self,
         url: &Url,
         maybe_whitelist: Option<&[String]>,
+        skip_soft_errors: bool,
     ) -> Result<Vec<(String, ConfigurationEntity)>, ConfigurationLoadError> {
-        (self.loader)(url, maybe_whitelist)
+        (self.loader)(url, maybe_whitelist, skip_soft_errors)
     }
 }

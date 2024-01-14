@@ -1,3 +1,2 @@
 [logging]
-level = "debug"
-output_serialize_format = "json"
+format = "json"

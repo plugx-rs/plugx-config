@@ -1,13 +1,14 @@
-//! Environment-Variables configuration loader.
+//! Environment-Variables configuration loader (`env` feature which is enabled by default).
 //!
 //! This is only usable if you enabled `env` Cargo feature.
 //!
 //! ### Example
 //! ```rust
-//! use std::collections::HashMap;
 //! use std::env::set_var;
-//! use url::Url;
-//! use plugx_config::loader::{ConfigurationLoader, env::ConfigurationLoaderEnv};
+//! use plugx_config::{
+//!     loader::{ConfigurationLoader, env::ConfigurationLoaderEnv},
+//!     ext::url::Url,
+//! };
 //!
 //! set_var("MY_APP_NAME__FOO__B_A_R", "Baz");
 //! set_var("MY_APP_NAME__QUX__ABC", "XYZ");
@@ -15,36 +16,46 @@
 //! let url = Url::try_from("env://?prefix=MY_APP_NAME").expect("A valid URL!");
 //!
 //! let mut loader = ConfigurationLoaderEnv::new();
-//! // You could set `prefix` and `separator` like this too:
-//! // loader.set_prefix("MY_APP_NAME");
-//! // loader.set_separator("__");
+//! // You could set `prefix`, `separator`, and `strip_prefix` programmatically like this:
+//! // loader.[set|with]_prefix("MY_APP_NAME");
+//! // loader.[set|with]_separator("__");
+//! // loader.[set|with]_strip_prefix(true);
 //!
-//! // We do not set `whitelist` so we're going to load all plugins configurations:
+//! // We do not set `whitelist` so we're going to load all plugins' configurations:
 //! let mut maybe_whitelist = None;
-//! let result = loader.try_load(&url, maybe_whitelist).unwrap();
-//! let (_, foo) = result.iter().find(|(plugin_name, _)| plugin_name == "foo").expect("`foo` plugin config");
+//! let result = loader.load(&url, maybe_whitelist, false).unwrap();
+//! let (_, foo) = result
+//!     .iter()
+//!     .find(|(plugin_name, _)| plugin_name == "foo")
+//!     .expect("`foo` plugin config");
 //! assert_eq!(foo.maybe_contents(), Some(&"B_A_R=\"Baz\"".to_string()));
-//! let (_, qux) = result.iter().find(|(plugin_name, _)| plugin_name == "qux").expect("`qux` plugin config");
+//! let (_, qux) = result
+//!     .iter()
+//!     .find(|(plugin_name, _)| plugin_name == "qux")
+//!     .expect("`qux` plugin config");
 //! assert_eq!(qux.maybe_contents(), Some(&"ABC=\"XYZ\"".to_string()));
 //!
-//! // Only load (and not modify) `foo` plugin configurations:
+//! // Only load `foo` plugin configuration:
 //! let whitelist = ["foo".to_string()].to_vec();
-//! maybe_whitelist = Some(whitelist.as_slice());
-//! let result = loader.try_load(&url, maybe_whitelist).unwrap();
+//! maybe_whitelist = Some(&whitelist);
+//! let result = loader.load(&url, maybe_whitelist, false).unwrap();
 //! assert!(result.iter().find(|(plugin_name, _)| plugin_name == "foo").is_some());
 //! assert!(result.iter().find(|(plugin_name, _)| plugin_name == "qux").is_none());
 //! ```
 //!
-//! See [loader] documentation to known how loaders work.
+//! See [mod@loader] documentation to known how loaders work.
 
 use crate::{
     entity::ConfigurationEntity,
     loader::{self, ConfigurationLoadError, ConfigurationLoader},
 };
+use cfg_if::cfg_if;
 use serde::Deserialize;
-use std::{collections::HashMap, env, fmt::Debug};
+use std::{env, fmt::Debug};
 use url::Url;
-const NAME: &str = "Environment-Variables";
+
+pub const NAME: &str = "Environment-Variables";
+pub const SCHEME_LIST: &[&str] = &["env"];
 
 /// Loads configurations from Environment-Variables.
 #[derive(Debug, Default, Clone)]
@@ -55,52 +66,43 @@ pub struct ConfigurationLoaderEnv {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 struct ConfigurationLoaderEnvOptions {
-    #[serde(rename = "prefix")]
     prefix: String,
-    #[serde(rename = "separator")]
     separator: String,
-    #[serde(rename = "strip_prefix")]
     strip_prefix: bool,
 }
 
 impl Default for ConfigurationLoaderEnvOptions {
     fn default() -> Self {
         Self {
-            prefix: default::option::prefix(),
-            separator: default::option::separator(),
-            strip_prefix: default::option::strip_prefix(),
+            prefix: default::prefix(),
+            separator: default::separator(),
+            strip_prefix: default::strip_prefix(),
         }
     }
 }
 
-// impl Debug for ConfigurationLoaderEnv {
-//     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-//         f.debug_struct("ConfigurationLoaderEnv")
-//             .field("options", &self.options)
-//             .finish()
-//     }
-// }
-
 pub mod default {
-    pub mod option {
-        pub fn prefix() -> String {
-            let mut prefix = option_env!("CARGO_BIN_NAME").unwrap_or("").to_string();
-            if prefix.is_empty() {
-                prefix = option_env!("CARGO_CRATE_NAME").unwrap_or("").to_string();
-            }
-            if !prefix.is_empty() {
-                prefix += separator().as_str();
-            }
-            prefix
-        }
 
-        pub fn separator() -> String {
-            "__".to_string()
+    #[inline]
+    pub fn prefix() -> String {
+        let mut prefix = option_env!("CARGO_BIN_NAME").unwrap_or("").to_string();
+        if prefix.is_empty() {
+            prefix = option_env!("CARGO_CRATE_NAME").unwrap_or("").to_string();
         }
+        if !prefix.is_empty() {
+            prefix += separator().as_str();
+        }
+        prefix
+    }
 
-        pub fn strip_prefix() -> bool {
-            true
-        }
+    #[inline(always)]
+    pub fn separator() -> String {
+        "__".to_string()
+    }
+
+    #[inline(always)]
+    pub fn strip_prefix() -> bool {
+        true
     }
 }
 
@@ -131,6 +133,17 @@ impl ConfigurationLoaderEnv {
         self.set_separator(separator);
         self
     }
+
+    /// Used is separating plugin names.
+    pub fn set_strip_prefix(&mut self, strip_prefix: bool) {
+        self.options.strip_prefix = strip_prefix;
+    }
+
+    /// Used is separating plugin names.
+    pub fn with_strip_prefix(mut self, strip_prefix: bool) -> Self {
+        self.set_strip_prefix(strip_prefix);
+        self
+    }
 }
 
 impl ConfigurationLoader for ConfigurationLoaderEnv {
@@ -140,32 +153,34 @@ impl ConfigurationLoader for ConfigurationLoaderEnv {
 
     /// In this case `["env"]`.
     fn scheme_list(&self) -> Vec<String> {
-        ["env".into()].into()
+        SCHEME_LIST.iter().cloned().map(String::from).collect()
     }
 
-    fn try_load(
+    /// This loader does not support `skip_soft_errors`.  
+    fn load(
         &self,
         url: &Url,
         maybe_whitelist: Option<&[String]>,
+        _skip_soft_errors: bool,
     ) -> Result<Vec<(String, ConfigurationEntity)>, ConfigurationLoadError> {
         let ConfigurationLoaderEnvOptions {
             mut prefix,
             mut separator,
             mut strip_prefix,
         } = loader::deserialize_query_string(NAME, url)?;
-        if self.options.prefix != default::option::prefix() {
+        if self.options.prefix != default::prefix() {
             prefix = self.options.prefix.clone()
         }
-        if self.options.separator != default::option::separator() {
+        if self.options.separator != default::separator() {
             separator = self.options.separator.clone()
         }
-        if self.options.strip_prefix != default::option::strip_prefix() {
+        if self.options.strip_prefix != default::strip_prefix() {
             strip_prefix = self.options.strip_prefix
         }
         if !separator.is_empty() && !prefix.is_empty() && !prefix.ends_with(separator.as_str()) {
             prefix += separator.as_str()
         }
-        let mut result: HashMap<String, String> = HashMap::new();
+        let mut result = Vec::new();
         env::vars()
             .filter(|(key, _)| prefix.is_empty() || key.starts_with(prefix.as_str()))
             .map(|(mut key, value)| {
@@ -196,6 +211,23 @@ impl ConfigurationLoader for ConfigurationLoaderEnv {
                 (plugin_name, key, value)
             })
             .filter(|(_, key, _)| !key.is_empty())
+            .map(|(_plugin_name, _key, _value)| {
+                cfg_if! {
+                    if #[cfg(feature = "tracing")] {
+                        tracing::trace!(
+                            plugin=_plugin_name,
+                            key=_key,
+                            value=_value,
+                            "Detected environment-variable"
+                        );
+                    } else if #[cfg(feature = "logging")] {
+                        log::trace!(
+                            "msg=\"Detected environment-variable\" plugin={_plugin_name:?} key={_key:?} value={_value:?}"
+                        );
+                    }
+                }
+                (_plugin_name, _key, _value)
+            })
             .filter(|(plugin_name, _, _)| {
                 maybe_whitelist
                     .as_ref()
@@ -204,14 +236,16 @@ impl ConfigurationLoader for ConfigurationLoaderEnv {
             })
             .for_each(|(plugin_name, key, value)| {
                 let key_value = format!("{key}={value:?}");
-                if let Some(configuration) = result.get_mut(&plugin_name) {
+                if let Some((_, configuration)) =
+                    result.iter_mut().find(|(name, _)| *name == plugin_name)
+                {
                     *configuration += "\n";
                     *configuration += key_value.as_str();
                 } else {
-                    result.insert(plugin_name, key_value);
+                    result.push((plugin_name, key_value));
                 }
             });
-        let result = result
+        Ok(result
             .into_iter()
             .map(|(plugin_name, contents)| {
                 (
@@ -221,7 +255,25 @@ impl ConfigurationLoader for ConfigurationLoaderEnv {
                         .with_contents(contents),
                 )
             })
-            .collect();
-        Ok(result)
+            .map(|(_plugin_name, _configuration)| {
+                cfg_if! {
+                    if #[cfg(feature = "tracing")] {
+                        tracing::trace!(
+                            plugin=_plugin_name,
+                            format=_configuration.maybe_format().unwrap_or(&"<unknown>".to_string()),
+                            contents=_configuration.maybe_contents().unwrap(),
+                            "Detected configuration from environment-variable"
+                        );
+                    } else if #[cfg(feature = "logging")] {
+                        log::trace!(
+                            "msg=\"Detected configuration from environment-variable\" plugin={_plugin_name:?} format={:?} contents={:?}",
+                            _configuration.maybe_format().unwrap_or(&"<unknown>".to_string()),
+                            _configuration.maybe_contents().unwrap(),
+                        );
+                    }
+                }
+                (_plugin_name, _configuration)
+            })
+            .collect())
     }
 }

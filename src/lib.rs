@@ -10,6 +10,12 @@ pub mod parser;
 pub use configuration::Configuration;
 #[doc(inline)]
 pub use error::ConfigurationError;
+#[doc(inline)]
+/// Final configuration data type
+pub use plugx_input::Input;
+#[doc(inline)]
+/// URL type to load configuration from
+pub use url::Url;
 
 pub mod ext {
     //! Extern other crates.

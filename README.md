@@ -1,10 +1,75 @@
 # Plugin configuration manager (work-in-progress)
 [**Package**](https://crates.io/crates/plugx-config)   |   [**Documentation**](https://docs.rs/plugx-config)   |   [**Repository**](https://github.com/plugx-rs/plugx-config)
 
-## Demo
-#### Preparation of the demo
+## Features
+* Loads and parses and merges and validates configurations.
+* Loads configuration from URLs.
+* Built-in File-system, Environment-variables, and HTTP configuration loaders (Cargo features).
+* Built-in Environment-variables, JSON, YAML, and TOML configuration parsers (Cargo features).
+* Easy to implement your own configuration loader or parser.
+* Ability to skip soft errors for different configuration loaders (e.g. if configuration file does not exist).
+* Human-readable errors.
+* Easy to reload configuration.
+* [log](https://crates.io/crates/log) and [tracing](https://crates.io/crates/tracing) integration.
+
+## Architecture
+```text
+ Example URLs:
+  file:///etc/directory/
+  file://file.[json|yml|toml|env]
+  http://config-server.tld/path/to/config
+  env://?prefix=APP_NAME
+  custom://custom?custom=custom
+┌──────────────────────────────────────────────┐ ┌──────────────────────┐ ┌───┐ ┌─────────┐
+│ FILE SYSTEM                                  │ │                      │ │   │ │         │
+│ ┌───────────────┐ ┌────────────────────────┐ │ │                      │ │   │ │         │
+│ │/etc/directory/│ │file.[json|yml|toml|env]│ │ │REST API (e.g. Consul)│ │Env│ │ Custom  │
+│ └────────────┬──┘ └──┬─────────────────────┘ │ │                      │ │   │ │         │
+│              │       │                       │ │                      │ │   │ │         │
+└──────────────┼───────┼───────────────────────┘ └─┬────────────────────┘ └─┬─┘ └──┬──────┘
+               │       │                           │                        │      │
+               │       │                           │                        │      │
+               │       │                           │                        │      │
+┌──────────────┼───────┼───────────────────────────┼────────────────────────┼──────┼──────┐
+│ plugx-config │       │                           │                        │      │      │
+│ ┌────────────┼───────┼───────────────────────────┼────────────────────────┼──────┼────┐ │
+│ │ Loader     │       │                           │                        │      │    │ │
+│ │ ┌──────────▼───────▼───┐ ┌─────────────────────▼─┐ ┌────────────────────▼┐ ┌───▼──┐ │ │
+│ │ │       LoaderFs       │ │       LoaderHttp      │ │      LoaderEnv      │ │Custom│ │ │
+│ │ └──────────┬───────┬──┬┘ └─────────────────────┬─┘ └────────────┬────────┘ └───┬──┘ │ │
+│ │            │       │  │                        │                │              │    │ │
+│ └────────────┼───────┼──┼────────────────────────┼────────────────┼──────────────┼────┘ │
+│              │       │  │                        │                │              │      │
+│              │       │  └───────────────┐        │                │              │      │
+│              │       │                  │        │                │              │      │
+│ ┌────────────┼───────┼──────────────────┼────────┼────────────────┼──────────────┼────┐ │
+│ │ Parser     │       │                  │        │                │              │    │ │
+│ │ ┌──────────▼───┐ ┌─▼──────────────┐ ┌─▼────────▼─────┐ ┌────────▼────────┐ ┌───▼──┐ │ │
+│ │ │  ParserYaml  │ │   ParserToml   │ │   ParserJson   │ │    ParserEnv    │ │Custom│ │ │
+│ │ └──────────┬───┘ └─┬──────────────┘ └─┬────────┬─────┘ └────────┬────────┘ └───┬──┘ │ │
+│ │            │       │                  │        │                │              │    │ │
+│ └────────────┼───────┼──────────────────┼────────┼────────────────┼──────────────┼────┘ │
+│              │       │                  │        │                │              │      │
+│              │       │                  │        │                │              │      │
+│ ┌────────────▼───────▼──────────────────▼────────▼────────────────▼──────────────▼────┐ │
+│ │                                       Merge                                         │ │
+│ └─────────────────────────────────────────┬───────────────────────────────────────────┘ │
+│                                           │                                             │
+│                                           │                                             │
+│ ┌─────────────────────────────────────────▼───────────────────────────────────────────┐ │
+│ │                                      Validate                                       │ │
+│ └─────────────────────────────────────────┬───────────────────────────────────────────┘ │
+│                                           │                                             │
+└───────────────────────────────────────────┼─────────────────────────────────────────────┘
+                                            │
+                                            │
+                                            ▼
+                                   Vec<(Name, Config)>
+```
+
+## Basic usage
 In this example we're going to load our plugins' configurations from a directory and environment-variables.  
-Here we have four configuration files for four plugins `foo`, `bar`, `baz`, and `qux`. This is our example `etc` directory:
+Here we have four configuration files for four plugins `foo`, `bar`, `baz`, and `qux` inside our example `tests/etc` directory:
 ```shell
 $ tree tests/etc
 ```
@@ -15,117 +80,83 @@ tests/etc
 ├── foo.env
 └── qux.yml
 ```
-```shell
-$ cat tests/etc/bar.json
-```
+
+#### tests/etc/bar.json
 ```json
 {
   "sqlite": {
-    "recreate": true,
-    "file": "/path/to/app.db"
+    "recreate": true
   }
 }
 ```
-<br/>
 
-```shell
-$ cat tests/etc/baz.toml
-```
+#### tests/etc/baz.toml
 ```toml
 [logging]
-level = "debug"
-output_serialize_format = "json"
+format = "json"
 ```
-<br/>
 
-```shell
-$ cat tests/etc/foo.env
-```
+#### tests/etc/foo.env
 ```dotenv
 SERVER__PORT="8080" # listen port
 ```
-<br/>
 
-```shell
-$ cat tests/etc/qux.yml
-```
+#### tests/etc/qux.yml
 ```yaml
 https:
   follow_redirects: false
-  insecure: false
 ```
 
-#### Demo code
+Additionally, we set the following environment-variables:
+```shell
+export APP_NAME__FOO__SERVER__ADDRESS="127.0.0.1"
+export APP_NAME__BAR__SQLITE__FILE="/path/to/app.db"
+export APP_NAME__BAZ__LOGGING__LEVEL="debug"
+export APP_NAME__QUX__HTTPS__INSECURE="false"
+```
+
+### Example main.rs
 ```rust
 use plugx_config::{
-    Configuration,
-    ext::{
-        url::Url,
-        plugx_input::schema::InputSchemaType,
-    }
+    ext::anyhow::{Context, Result},
+    Configuration, Url,
 };
-use std::{env, fs, collections::HashMap};
 
-let env_url: Url = "env://?prefix=APP_NAME__&key_separator=__"
-    .parse()
-    .expect("Valid URL");
-let current_dir = env::current_dir()
-    .unwrap()
-    .join("tests")
-    .join("etc")
-    .to_str()
-    .unwrap()
-    .to_string();
-let file_url: Url = format!("file://{current_dir}?skippable[0]=notfound") // Skips error if `current_dir` does not exists
-    .parse()
-    .expect("Valid URL");
+fn main() -> Result<()> {
+    let url_list: Vec<Url> = get_url_list_from_cmd_args()?;
 
-let mut configuration = Configuration::default().with_url(env_url).with_url(file_url);
-let apply_skippable_errors = true;
-configuration.try_load_parse_merge(apply_skippable_errors).unwrap();
-// Print all configurations:
-configuration
-    .configuration()
-    .iter()
-    .for_each(|(plugin, config)| println!("{plugin}: {config}"));
-// Prints:
-//  foo: {"server": {"port": 8080}}
-//  baz: {"logging": {"output_serialize_format": "json", "level": "debug"}}
-//  bar: {"sqlite": {"file": "/path/to/app.db", "recreate": true}}
-//  qux: {"https": {"insecure": false, "follow_redirects": false}}
+    let mut configuration = Configuration::new();
+    url_list
+        .into_iter()
+        .try_for_each(|url| configuration.add_url(url))?;
+    // Load & Parse & Merge & print:
+    configuration
+        .load_parse_merge(true)?
+        .iter()
+        .for_each(|(plugin_name, configuration)| println!("{plugin_name}: {configuration}"));
 
-// Also we can validate our plugins' configurations.
-// Here we just check foo's validation:
-let rules_yml = r#"
-foo:
-  type: static_map
-  items:
-    server:
-      schema:
-        type: static_map
-        items:         
-          address:
-            schema:
-              type: ip
-            default: 127.0.0.1
-          port:
-            schema:
-              type: integer
-              range:
-                min: 1
-                max: 65535
-"#;
-let rules: HashMap<String, InputSchemaType> = serde_yaml::from_str(rules_yml).unwrap();
-configuration
-    .try_load_parse_merge_validate(apply_skippable_errors, &rules) // Validates configurations too
-    .unwrap();
-// Set invalid IP address to test validation:
-env::set_var("APP_NAME__FOO__SERVER__ADDRESS", "127.0.0.1.bad.ip");
-let error = configuration
-    .try_load_parse_merge_validate(apply_skippable_errors, &rules)
-    .err()
-    .unwrap();
-println!("{error}");
-// Prints:
-//  [foo][server][address] Could not parse IP address: invalid IP address syntax (expected IP address and got "127.0.0.1.bad.ip")
+    Ok(())
+}
+
+fn get_url_list_from_cmd_args() -> Result<Vec<Url>> {
+    std::env::args()
+        .skip(1)
+        .try_fold(Vec::new(), |mut list, arg| {
+            list.push(
+                Url::parse(&arg).with_context(|| format!("Could not parse URL `{arg}`"))?,
+            );
+            Ok(list)
+        })
+}
+```
+
+### Output
+```shell
+$ /path/to/main 'env://?prefix=APP_NAME' 'fs:///tests/etc/?strip-slash=true'
+```
+```text
+bar: {"sqlite": {"recreate": true, "file": "/path/to/app.db"}}
+foo: {"server": {"address": "127.0.0.1", "port": 8080}}
+baz: {"logging": {"level": "debug", "format": "json"}}
+qux: {"https": {"follow_redirects": false, "insecure": false}}
 ```

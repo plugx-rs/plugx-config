@@ -1,7 +1,10 @@
 //! All possible error types.
 
+#[doc(inline)]
 pub use crate::loader::ConfigurationLoadError;
+#[doc(inline)]
 pub use crate::parser::ConfigurationParserError;
+
 use url::Url;
 
 /// Main error wrapper.
@@ -20,7 +23,7 @@ pub enum ConfigurationError {
         url: Url,
         source: ConfigurationParserError,
     },
-    /// Errors from [plugx_input::validation::InputValidateError]
+    /// Errors from [plugx_input::schema::InputSchemaError]
     #[error(transparent)]
     Validate {
         #[from]
@@ -30,14 +33,8 @@ pub enum ConfigurationError {
     Other(#[from] anyhow::Error),
 }
 
-impl ConfigurationError {
-    /// Checks if the error occurred in [crate::loader::ConfigurationLoader::try_load] is
-    /// skippable or not.
-    pub fn is_skippable(&self) -> bool {
-        if let Self::Load { source, .. } = self {
-            source.is_skippable()
-        } else {
-            false
-        }
+impl From<url::ParseError> for ConfigurationError {
+    fn from(value: url::ParseError) -> Self {
+        Self::Other(anyhow::anyhow!(value))
     }
 }
