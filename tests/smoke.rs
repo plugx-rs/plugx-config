@@ -40,7 +40,9 @@ fn smoke() -> Result<(), anyhow::Error> {
             log::trace!("cwd={current_dir:?}");
         }
     }
-    let file_url: Url = format!("file:{current_dir}").parse().expect("Valid URL");
+    let file_url: Url = format!("file:{current_dir}?strip-slash=true")
+        .parse()
+        .expect("Valid URL");
 
     let configuration = Configuration::new().with_url(env_url)?.with_url(file_url)?;
     let skip_soft_errors = true;
