@@ -68,13 +68,8 @@
 ```
 
 ## Basic usage
-```rust
-
-
-```
-#### Preparation of the demo
 In this example we're going to load our plugins' configurations from a directory and environment-variables.  
-Here we have four configuration files for four plugins `foo`, `bar`, `baz`, and `qux` inside our example `etc` directory:
+Here we have four configuration files for four plugins `foo`, `bar`, `baz`, and `qux` inside our example `tests/etc` directory:
 ```shell
 $ tree tests/etc
 ```
@@ -85,74 +80,83 @@ tests/etc
 ├── foo.env
 └── qux.yml
 ```
-<br/>
 
-```shell
-$ cat tests/etc/bar.json
-```
+#### tests/etc/bar.json
 ```json
 {
   "sqlite": {
-    "recreate": true,
-    "file": "/path/to/app.db"
+    "recreate": true
   }
 }
 ```
-<br/>
 
-```shell
-$ cat tests/etc/baz.toml
-```
+#### tests/etc/baz.toml
 ```toml
 [logging]
-level = "debug"
-output_serialize_format = "json"
+format = "json"
 ```
-<br/>
 
-```shell
-$ cat tests/etc/foo.env
-```
+#### tests/etc/foo.env
 ```dotenv
 SERVER__PORT="8080" # listen port
 ```
-<br/>
 
-```shell
-$ cat tests/etc/qux.yml
-```
+#### tests/etc/qux.yml
 ```yaml
 https:
   follow_redirects: false
-  insecure: false
 ```
-<br/>
 
 Additionally, we set the following environment-variables:
 ```shell
-$ export APP_NAME__FOO__SERVER__ADDRESS="127.0.0.1"
-$ export APP_NAME__BAR__SQLITE__FILE="/path/to/app.db"
-$ export APP_NAME__BAZ__LOGGING__LEVEL="debug"
-$ export APP_NAME__QUX__HTTPS__INSECURE="false"
+export APP_NAME__FOO__SERVER__ADDRESS="127.0.0.1"
+export APP_NAME__BAR__SQLITE__FILE="/path/to/app.db"
+export APP_NAME__BAZ__LOGGING__LEVEL="debug"
+export APP_NAME__QUX__HTTPS__INSECURE="false"
 ```
-<br/>
 
-Usage:
+### Example main.rs
 ```rust
-use plugx_config::{ext::url::Url, Configuration};
-use plugx_input::schema::InputSchemaType;
-use std::{collections::HashMap, env, fs};
+use plugx_config::{
+    ext::anyhow::{Context, Result},
+    Configuration, Url,
+};
 
-// Add our URLs.
-// Generally you need to get them from commandline arguments or somewhere else:
-let env_url: Url = "env://?prefix=APP_NAME".parse().expect("Valid URL");
-let current_directory = env::current_dir().expect("CWD");
-let directory_url: Url = format!("file://{}/tests/etc/", current_directory.to_str().unwrap())
-    .parse()
-    .expect("Valid URL");
+fn main() -> Result<()> {
+    let url_list: Vec<Url> = get_url_list_from_cmd_args()?;
 
-// Initialize plugins' configurations:
-let mut configuration = Configuration::new().with_url(env_url)?.with_url(directory_url)?;
+    let mut configuration = Configuration::new();
+    url_list
+        .into_iter()
+        .try_for_each(|url| configuration.add_url(url))?;
+    // Load & Parse & Merge & print:
+    configuration
+        .load_parse_merge(true)?
+        .iter()
+        .for_each(|(plugin_name, configuration)| println!("{plugin_name}: {configuration}"));
 
+    Ok(())
+}
 
+fn get_url_list_from_cmd_args() -> Result<Vec<Url>> {
+    std::env::args()
+        .skip(1)
+        .try_fold(Vec::new(), |mut list, arg| {
+            list.push(
+                Url::parse(&arg).with_context(|| format!("Could not parse URL `{arg}`"))?,
+            );
+            Ok(list)
+        })
+}
+```
+
+### Output
+```shell
+$ /path/to/main 'env://?prefix=APP_NAME' 'fs:///tests/etc/?strip-slash=true'
+```
+```text
+bar: {"sqlite": {"recreate": true, "file": "/path/to/app.db"}}
+foo: {"server": {"address": "127.0.0.1", "port": 8080}}
+baz: {"logging": {"level": "debug", "format": "json"}}
+qux: {"https": {"follow_redirects": false, "insecure": false}}
 ```

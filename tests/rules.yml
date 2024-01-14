@@ -40,7 +40,7 @@ baz:
             schema:
               type: log_level
             default: info
-          output_serialize_format:
+          format:
             schema:
               type: enum
               items:

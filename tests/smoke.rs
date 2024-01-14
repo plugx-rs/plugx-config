@@ -31,13 +31,11 @@ fn smoke() -> Result<(), anyhow::Error> {
         .to_str()
         .unwrap()
         .to_string();
-    let file_url: Url = format!("file://{current_dir}?skippable[0]=notfound")
-        .parse()
-        .expect("Valid URL");
+    let file_url: Url = format!("file://{current_dir}").parse().expect("Valid URL");
 
-    let mut configuration = Configuration::new().with_url(env_url)?.with_url(file_url)?;
-    let apply_skippable_errors = true;
-    let merged = configuration.merge(apply_skippable_errors).unwrap();
+    let configuration = Configuration::new().with_url(env_url)?.with_url(file_url)?;
+    let skip_soft_errors = true;
+    let merged = configuration.load_parse_merge(skip_soft_errors).unwrap();
     merged
         .iter()
         .for_each(|(plugin, config)| println!("{plugin}: {config}"));
@@ -52,11 +50,11 @@ fn smoke() -> Result<(), anyhow::Error> {
     let rules: HashMap<String, InputSchemaType> = serde_yaml::from_str(rules_yml.as_str()).unwrap();
     let rules: Vec<(String, InputSchemaType)> = rules.into_iter().collect();
     configuration
-        .validate(&rules, apply_skippable_errors)
+        .load_parse_merge_validate(&rules, skip_soft_errors)
         .unwrap();
     env::set_var("APP_NAME__FOO__SERVER__ADDRESS", "127.0.0.1.bad.ip");
     let error = configuration
-        .validate(&rules, apply_skippable_errors)
+        .load_parse_merge_validate(&rules, skip_soft_errors)
         .err()
         .unwrap();
     println!("{:#}", plugx_config::ext::anyhow::anyhow!(error));
