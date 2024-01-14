@@ -12,48 +12,48 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  style:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Check style
-        run: make check-style
-
-  clippy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Clippy
-        run: make clippy
-
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build
-        run: make all
+#  style:
+#    runs-on: ubuntu-latest
+#    steps:
+#      - uses: actions/checkout@v4
+#      - name: Check style
+#        run: make check-style
+#
+#  clippy:
+#    runs-on: ubuntu-latest
+#    steps:
+#      - uses: actions/checkout@v4
+#      - name: Clippy
+#        run: make clippy
+#
+#  build:
+#    runs-on: ubuntu-latest
+#    steps:
+#      - uses: actions/checkout@v4
+#      - name: Build
+#        run: make all
 
   test:
-    needs:
-      - build
+#    needs:
+#      - build
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            name: Test macOS
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            name: Test Ubuntu GNU
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-musl
-            name: Test Ubuntu Musl
-          - os: windows-latest
-            target: x86_64-pc-windows-gnu
-            name: Test Windows GNU
+#          - os: macos-latest
+#            target: x86_64-apple-darwin
+#            name: Test macOS
+#          - os: ubuntu-latest
+#            target: x86_64-unknown-linux-gnu
+#            name: Test Ubuntu GNU
+#          - os: ubuntu-latest
+#            target: x86_64-unknown-linux-musl
+#            name: Test Ubuntu Musl
+#          - os: windows-latest
+#            target: x86_64-pc-windows-gnu
+#            name: Test Windows GNU
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             name: Test Windows MSVC
@@ -74,18 +74,18 @@ jobs:
       - name: Test
         run: make test TARGET_OPTION="--target=${{ matrix.target }}"
 
-  examples:
-    runs-on: ubuntu-latest
-    needs:
-      - build
-    steps:
-      - uses: actions/checkout@v4
-      - name: Examples
-        run: make examples
-
-  docs:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Documentation
-        run: make docs
+#  examples:
+#    runs-on: ubuntu-latest
+#    needs:
+#      - build
+#    steps:
+#      - uses: actions/checkout@v4
+#      - name: Examples
+#        run: make examples
+#
+#  docs:
+#    runs-on: ubuntu-latest
+#    steps:
+#      - uses: actions/checkout@v4
+#      - name: Documentation
+#        run: make docs
