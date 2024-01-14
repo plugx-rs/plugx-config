@@ -34,13 +34,54 @@ jobs:
         run: make all
 
   test:
+    needs:
+      - build
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            name: Test macOS
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            name: Test Ubuntu GNU
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            name: Test Ubuntu Musl
+          - os: windows-latest
+            target: x86_64-pc-windows-gnu
+            name: Test Windows GNU
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            name: Test Windows MSVC
+    steps:
+      - uses: actions/checkout@v4
+      - name: Installing macOS dependencies
+        if: contains(matrix.os, 'macos')
+        run: |
+          brew install make
+      - name: Installing Rust target
+        run: |
+          rustup target add ${{ matrix.target }}
+      - name: Installing Linux dependencies for `musl`
+        if: contains(matrix.os, 'ubuntu') && contains(matrix.target, 'musl')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y -qq musl-dev musl-tools
+      - name: Test
+        run: make test
+
+  examples:
     runs-on: ubuntu-latest
     needs:
       - build
     steps:
       - uses: actions/checkout@v4
       - name: Test
-        run: make test
+        run: make examples
 
   docs:
     runs-on: ubuntu-latest

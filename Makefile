@@ -13,6 +13,15 @@ clippy:
 test:
 	RUST_BACKTRACE=1 cargo test --no-default-features --features="env,fs,json,yaml,toml${LOG_FEATURE}" -- --nocapture
 
+examples: example-basic
+
+example-basic:
+	APP_NAME__FOO__SERVER__ADDRESS="127.0.0.1" \
+    APP_NAME__BAR__SQLITE__FILE="/path/to/app.db" \
+    APP_NAME__BAZ__LOGGING__LEVEL="debug" \
+    APP_NAME__QUX__HTTPS__INSECURE="false" \
+    RUST_BACKTRACE=1 cargo run --no-default-features --features="env,fs,json,yaml,toml${LOG_FEATURE}" --example basic -- --trace 'env://?prefix=APP_NAME' 'fs:///tests/etc/?strip-slash=true'
+
 docs:
 	cargo doc --all-features
 
