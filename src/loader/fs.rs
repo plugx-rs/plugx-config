@@ -357,6 +357,7 @@ impl ConfigurationLoaderFs {
         };
         let mut path = PathBuf::new();
         url_path.components().for_each(|component| {
+            dbg!(&component);
             path.push(component);
         });
         dbg!(&url, &url_path, &path);
