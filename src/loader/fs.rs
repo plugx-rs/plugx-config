@@ -48,15 +48,20 @@
 //!
 //! See [loader] documentation to known how loaders work.
 
-use crate::loader::SoftErrors;
 use crate::{
     entity::ConfigurationEntity,
-    loader::{self, ConfigurationLoadError, ConfigurationLoader},
+    loader::{self, ConfigurationLoadError, ConfigurationLoader, SoftErrors},
 };
 use anyhow::anyhow;
 use cfg_if::cfg_if;
 use serde::Deserialize;
-use std::{collections::HashMap, fmt::Debug, fs, io, path::PathBuf};
+use std::{
+    collections::HashMap,
+    env::current_dir,
+    fmt::Debug,
+    fs, io,
+    path::{Path, PathBuf},
+};
 use url::Url;
 
 pub const NAME: &str = "File";
@@ -104,14 +109,11 @@ impl TryFrom<io::ErrorKind> for SoftErrorsFs {
 }
 
 #[doc(hidden)]
-pub mod utils {
-    use super::*;
-    use std::env::current_dir;
-    use std::path::Path;
-
+impl ConfigurationLoaderFs {
     #[inline]
     pub fn get_plugin_name_and_format<P: AsRef<Path>>(path: P) -> Option<(String, String)> {
-        get_plugin_name(&path).and_then(|name| get_format(&path).map(|format| (name, format)))
+        Self::get_plugin_name(&path)
+            .and_then(|name| Self::get_format(&path).map(|format| (name, format)))
     }
 
     #[inline]
@@ -145,11 +147,11 @@ pub mod utils {
         maybe_whitelist: Option<&[String]>,
         skip_soft_errors: bool,
     ) -> Result<Vec<ConfigurationEntity>, ConfigurationLoadError> {
-        let path = url_to_path(url, options).map_err(|_| {
+        let path = Self::url_to_path(url, options).map_err(|_| {
             ConfigurationLoadError::Other(anyhow!("Could not detect current working directory"))
         })?;
         if path.is_dir() {
-            let list = match get_directory_file_list(&path, maybe_whitelist) {
+            let list = match Self::get_directory_file_list(&path, maybe_whitelist) {
                 Ok(list) => list,
                 Err(error) => {
                     return if skip_soft_errors
@@ -198,7 +200,7 @@ pub mod utils {
                 })
                 .collect())
         } else if path.is_file() {
-            if let Some((plugin_name, format)) = get_plugin_name_and_format(&path) {
+            if let Some((plugin_name, format)) = Self::get_plugin_name_and_format(&path) {
                 if maybe_whitelist
                     .map(|whitelist| whitelist.contains(&plugin_name))
                     .unwrap_or(true)
@@ -277,7 +279,14 @@ pub mod utils {
             .filter_map(|maybe_entry| maybe_entry.ok())
             .map(|entry| entry.path())
             .filter_map(|path| {
-                if let Some((plugin_name, format)) = get_plugin_name_and_format(&path) {
+                if let Some((plugin_name, format)) = Self::get_plugin_name_and_format(&path) {
+                    cfg_if! {
+                        if #[cfg(feature = "tracing")] {
+                            tracing::trace!(plugin=plugin_name, path=?path, "Detected configuration file");
+                        } else if #[cfg(feature = "logging")] {
+                            log::trace!("msg=\"Detected configuration file\" plugin={plugin_name:?} path={path:?}");
+                        }
+                    }
                     Some((plugin_name, format, path))
                 } else {
                     cfg_if! {
@@ -317,7 +326,7 @@ pub mod utils {
         entity: &mut ConfigurationEntity,
         options: &ConfigurationLoaderFsOptions,
     ) -> Result<(), io::Error> {
-        fs::read_to_string(url_to_path(entity.url(), options)?).map(|contents| {
+        fs::read_to_string(Self::url_to_path(entity.url(), options)?).map(|contents| {
             entity.set_contents(contents);
         })
     }
@@ -327,8 +336,16 @@ pub mod utils {
         url: &Url,
         options: &ConfigurationLoaderFsOptions,
     ) -> Result<PathBuf, io::Error> {
-        let mut path = if url.path() == "/" {
-            current_dir()?
+        let url_path = if url.path() == "/" {
+            let cwd = current_dir()?;
+            cfg_if! {
+                if #[cfg(feature = "tracing")] {
+                    tracing::debug!(url=%url, cwd=?cwd,"set current working directory");
+                } else if #[cfg(feature = "logging")] {
+                    log::debug!("msg=\"Read file\" url=\"{url}\", cwd={cwd:?}");
+                }
+            }
+            cwd
         } else if options.strip_slash.unwrap_or(false) && url.path().starts_with('/') {
             PathBuf::from(
                 url.path()
@@ -338,6 +355,10 @@ pub mod utils {
         } else {
             PathBuf::from(url.path())
         };
+        let mut path = PathBuf::new();
+        url_path.components().for_each(|component| {
+            path = path.join(component);
+        });
         Ok(path)
     }
 }
@@ -391,10 +412,29 @@ impl ConfigurationLoader for ConfigurationLoaderFs {
     ) -> Result<Vec<(String, ConfigurationEntity)>, ConfigurationLoadError> {
         let options = self.get_options(url)?;
         let mut entity_list =
-            utils::get_entity_list(url, &options, maybe_whitelist, skip_soft_errors)?;
+            Self::get_entity_list(url, &options, maybe_whitelist, skip_soft_errors)?;
         entity_list.iter_mut().try_for_each(|entity| {
-            match utils::read_entity_contents(entity, &options) {
-                Ok(_) => Ok(()),
+            match Self::read_entity_contents(entity, &options) {
+                Ok(_) => {
+                    cfg_if! {
+                        if #[cfg(feature = "tracing")] {
+                            tracing::trace!(
+                                url=%entity.url(),
+                                contents=entity
+                                    .maybe_contents()
+                                    .expect("Contents is set inside `utils::read_entity_contents`"),
+                                "Read configuration file"
+                            );
+                        } else if #[cfg(feature = "logging")] {
+                            log::trace!(
+                                "msg=\"Read configuration file\" url={:?} contents={:?}",
+                                entity.url().to_string(),
+                                entity.maybe_contents().expect("Contents is set inside `utils::read_entity_contents`")
+                            );
+                        }
+                    }
+                    Ok(())
+                },
                 Err(error) => {
                     if skip_soft_errors && (options.soft_errors.skip_all() || options.contains(error.kind())) {
                         cfg_if! {
