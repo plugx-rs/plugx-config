@@ -4,19 +4,32 @@ use plugx_config::{
 };
 
 fn main() -> Result<()> {
-    let (trace, url_list) = get_options_from_cmd_args()?;
+    let (_trace, url_list) = get_options_from_cmd_args()?;
 
-    tracing_subscriber::fmt()
-        .pretty()
-        .with_max_level(if trace {
-            tracing::Level::TRACE
-        } else {
-            tracing::Level::INFO
-        })
-        .with_line_number(false)
-        .with_file(false)
-        .without_time()
-        .init();
+    cfg_if::cfg_if! {
+        if #[cfg(feature = "tracing")] {
+            tracing_subscriber::fmt()
+                .pretty()
+                .with_max_level(if _trace {
+                    tracing::Level::TRACE
+                } else {
+                    tracing::Level::INFO
+                })
+                .with_line_number(false)
+                .with_file(false)
+                .without_time()
+                .init();
+        } else if #[cfg(feature = "logging")] {
+            env_logger::builder()
+                .filter_level(if _trace {
+                    log::LevelFilter::Trace
+                } else {
+                    log::LevelFilter::Info
+                })
+                .format_timestamp(None)
+                .init();
+        }
+    }
 
     let mut configuration = Configuration::new();
     url_list

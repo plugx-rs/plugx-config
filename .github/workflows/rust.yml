@@ -80,7 +80,7 @@ jobs:
       - build
     steps:
       - uses: actions/checkout@v4
-      - name: Test
+      - name: Examples
         run: make examples
 
   docs:
