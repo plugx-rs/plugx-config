@@ -359,7 +359,7 @@ impl ConfigurationLoaderFs {
         url_path.components().for_each(|component| {
             path = path.join(component);
         });
-        dbg!(&path);
+        dbg!(&url, &url_path, &path);
         Ok(path)
     }
 }
