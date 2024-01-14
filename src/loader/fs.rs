@@ -145,19 +145,9 @@ pub mod utils {
         maybe_whitelist: Option<&[String]>,
         skip_soft_errors: bool,
     ) -> Result<Vec<ConfigurationEntity>, ConfigurationLoadError> {
-        let path = if url.path() == "/" {
-            current_dir().map_err(|_| {
-                ConfigurationLoadError::Other(anyhow!("Could not fetch current working directory"))
-            })?
-        } else if options.strip_slash.unwrap_or(false) && url.path().starts_with('/') {
-            PathBuf::from(
-                url.path()
-                    .strip_prefix('/')
-                    .expect("URL path with length > 1"),
-            )
-        } else {
-            PathBuf::from(url.path())
-        };
+        let path = url_to_path(url, options).map_err(|_| {
+            ConfigurationLoadError::Other(anyhow!("Could not detect current working directory"))
+        })?;
         if path.is_dir() {
             let list = match get_directory_file_list(&path, maybe_whitelist) {
                 Ok(list) => list,
@@ -327,22 +317,28 @@ pub mod utils {
         entity: &mut ConfigurationEntity,
         options: &ConfigurationLoaderFsOptions,
     ) -> Result<(), io::Error> {
-        let path = if entity.url().path() == "/" {
+        fs::read_to_string(url_to_path(entity.url(), options)?).map(|contents| {
+            entity.set_contents(contents);
+        })
+    }
+
+    #[inline]
+    pub fn url_to_path(
+        url: &Url,
+        options: &ConfigurationLoaderFsOptions,
+    ) -> Result<PathBuf, io::Error> {
+        let mut path = if url.path() == "/" {
             current_dir()?
-        } else if options.strip_slash.unwrap_or(false) && entity.url().path().starts_with('/') {
+        } else if options.strip_slash.unwrap_or(false) && url.path().starts_with('/') {
             PathBuf::from(
-                entity
-                    .url()
-                    .path()
+                url.path()
                     .strip_prefix('/')
                     .expect("URL path with length > 1"),
             )
         } else {
-            PathBuf::from(entity.url().path())
+            PathBuf::from(url.path())
         };
-        fs::read_to_string(path).map(|contents| {
-            entity.set_contents(contents);
-        })
+        Ok(path)
     }
 }
 
