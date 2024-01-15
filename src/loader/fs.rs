@@ -337,6 +337,13 @@ impl ConfigurationLoaderFs {
         url: &Url,
         options: &ConfigurationLoaderFsOptions,
     ) -> Result<PathBuf, io::Error> {
+        cfg_if! {
+            if #[cfg(target_os="windows")] {
+                let is_windows = true;
+            } else {
+                let is_windows = false;
+            }
+        }
         let url_path = if url.path() == "/" {
             let cwd = current_dir()?;
             cfg_if! {
@@ -347,7 +354,9 @@ impl ConfigurationLoaderFs {
                 }
             }
             cwd
-        } else if options.strip_slash.unwrap_or(false) && url.path().starts_with('/') {
+        } else if (options.strip_slash.unwrap_or(false) || is_windows)
+            && url.path().starts_with('/')
+        {
             PathBuf::from(
                 url.path()
                     .strip_prefix('/')
@@ -357,21 +366,12 @@ impl ConfigurationLoaderFs {
             PathBuf::from(url.path())
         };
         let mut path = PathBuf::new();
-        cfg_if! {
-            if #[cfg(target_os="windows")] {
-                let is_windows = true;
-            } else {
-                let is_windows = false;
-            }
-        }
         url_path
             .components()
             .enumerate()
             .for_each(|(index, component)| {
                 dbg!(index, &component);
-                if !(is_windows && matches!(component, Component::RootDir) && index < 2) {
-                    path = path.join(component);
-                }
+                path = path.join(component);
             });
         dbg!(&url, &url_path, &path);
         Ok(path)
