@@ -55,7 +55,6 @@ use crate::{
 use anyhow::anyhow;
 use cfg_if::cfg_if;
 use serde::Deserialize;
-use std::path::Component;
 use std::{
     collections::HashMap,
     env::current_dir,
@@ -267,6 +266,7 @@ impl ConfigurationLoaderFs {
             Err(ConfigurationLoadError::NotFound {
                 loader: NAME.to_string(),
                 url: url.clone(),
+                item: format!("path `{path:?}`").into(),
             })
         }
     }
@@ -344,13 +344,13 @@ impl ConfigurationLoaderFs {
                 let is_windows = false;
             }
         }
-        let url_path = if url.path() == "/" {
+        let url_path = if url.path() == "/" || url.path().is_empty() {
             let cwd = current_dir()?;
             cfg_if! {
                 if #[cfg(feature = "tracing")] {
                     tracing::debug!(url=%url, cwd=?cwd,"set current working directory");
                 } else if #[cfg(feature = "logging")] {
-                    log::debug!("msg=\"Read file\" url=\"{url}\", cwd={cwd:?}");
+                    log::debug!("msg=\"set current working directory\" url=\"{url}\", cwd={cwd:?}");
                 }
             }
             cwd
@@ -366,14 +366,16 @@ impl ConfigurationLoaderFs {
             PathBuf::from(url.path())
         };
         let mut path = PathBuf::new();
-        url_path
-            .components()
-            .enumerate()
-            .for_each(|(index, component)| {
-                dbg!(index, &component);
-                path = path.join(component);
-            });
-        dbg!(&url, &url_path, &path);
+        url_path.components().for_each(|component| {
+            path = path.join(component);
+        });
+        cfg_if! {
+            if #[cfg(feature = "tracing")] {
+                tracing::trace!(url_path=?url_path, os_path=?path,"Changed URL path to OS path");
+            } else if #[cfg(feature = "logging")] {
+                log::trace!("msg=\"Changed URL path to OS path\" url_path={url_path:?}, os_path={path:?}");
+            }
+        }
         Ok(path)
     }
 }
