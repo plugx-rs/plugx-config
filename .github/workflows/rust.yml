@@ -12,100 +12,100 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-#  style:
-#    runs-on: ubuntu-latest
-#    steps:
-#      - uses: actions/checkout@v4
-#      - name: Check style
-#        run: make check-style
-#
-#  clippy:
-#    runs-on: ubuntu-latest
-#    steps:
-#      - uses: actions/checkout@v4
-#      - name: Clippy
-#        run: make clippy
-#
-#  docs:
-#    runs-on: ubuntu-latest
-#    steps:
-#      - uses: actions/checkout@v4
-#      - name: Documentation
-#        run: make docs
-#
-#  build:
-#    runs-on: ubuntu-latest
-#    steps:
-#      - uses: actions/checkout@v4
-#      - name: Build
-#        run: make all
-#
-#  test:
-#    needs:
-#      - build
-#    name: ${{ matrix.name }}
-#    runs-on: ${{ matrix.os }}
-#    strategy:
-#      fail-fast: false
-#      matrix:
-#        include:
-#          - os: macos-latest
-#            target: x86_64-apple-darwin
-#            name: Test [macOS]
-#          - os: ubuntu-latest
-#            target: x86_64-unknown-linux-gnu
-#            name: Test [Ubuntu][GNU]
-#          - os: ubuntu-latest
-#            target: x86_64-unknown-linux-musl
-#            name: Test [Ubuntu][musl]
-#          - os: windows-latest
-#            target: x86_64-pc-windows-gnu
-#            name: Test [Windows][GNU]
-#          - os: windows-latest
-#            target: x86_64-pc-windows-msvc
-#            name: Test [Windows][MSVC]
-#    steps:
-#      - uses: actions/checkout@v4
-#      - name: Maybe install macOS deps
-#        if: contains(matrix.os, 'macos')
-#        run: |
-#          brew install make
-#      - name: Install Rust target
-#        run: |
-#          rustup target add ${{ matrix.target }}
-#      - name: Maybe install Linux deps
-#        if: contains(matrix.os, 'ubuntu') && contains(matrix.target, 'musl')
-#        run: |
-#          sudo apt-get update
-#          sudo apt-get install -y -qq musl-dev musl-tools
-#      - name: Test
-#        run: |
-#          make test TARGET_OPTION="--target=${{ matrix.target }}"
+  style:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check style
+        run: make check-style
 
-  examples:
-#    needs:
-#      - build
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clippy
+        run: make clippy
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Documentation
+        run: make docs
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: make all
+
+  test:
+    needs:
+      - build
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
-#          - os: macos-latest
-#            target: x86_64-apple-darwin
-#            name: Examples [macOS]
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            name: Test [macOS]
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            name: Test [Ubuntu][GNU]
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            name: Test [Ubuntu][musl]
+          - os: windows-latest
+            target: x86_64-pc-windows-gnu
+            name: Test [Windows][GNU]
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            name: Test [Windows][MSVC]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Maybe install macOS deps
+        if: contains(matrix.os, 'macos')
+        run: |
+          brew install make
+      - name: Install Rust target
+        run: |
+          rustup target add ${{ matrix.target }}
+      - name: Maybe install Linux deps
+        if: contains(matrix.os, 'ubuntu') && contains(matrix.target, 'musl')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y -qq musl-dev musl-tools
+      - name: Test
+        run: |
+          make test TARGET_OPTION="--target=${{ matrix.target }}"
+
+  examples:
+    needs:
+      - build
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            name: Examples [macOS]
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             name: Examples [Ubuntu][GNU]
-#          - os: ubuntu-latest
-#            target: x86_64-unknown-linux-musl
-#            name: Examples [Ubuntu][musl]
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            name: Examples [Ubuntu][musl]
           - os: windows-latest
             target: x86_64-pc-windows-gnu
             name: Examples [Windows][GNU]
-#          - os: windows-latest
-#            target: x86_64-pc-windows-msvc
-#            name: Examples [Windows][MSVC]
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            name: Examples [Windows][MSVC]
     steps:
       - uses: actions/checkout@v4
       - name: Maybe install macOS deps
