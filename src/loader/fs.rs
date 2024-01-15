@@ -55,6 +55,7 @@ use crate::{
 use anyhow::anyhow;
 use cfg_if::cfg_if;
 use serde::Deserialize;
+use std::path::Component;
 use std::{
     collections::HashMap,
     env::current_dir,
@@ -357,8 +358,17 @@ impl ConfigurationLoaderFs {
         };
         let mut path = PathBuf::new();
         url_path.components().for_each(|component| {
-            dbg!(&component);
-            path.push(component);
+            cfg_if! {
+                if #[cfg(target_os="windows")] {
+                    let is_windows = true;
+                } else {
+                    let is_windows = false;
+                }
+            };
+            if !(is_windows && matches!(component, Component::RootDir)) {
+                dbg!(&component);
+                path.push(component);
+            }
         });
         dbg!(&url, &url_path, &path);
         Ok(path)
