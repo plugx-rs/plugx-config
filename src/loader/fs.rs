@@ -370,7 +370,7 @@ impl ConfigurationLoaderFs {
             .for_each(|(index, component)| {
                 dbg!(index, &component);
                 if !(is_windows && matches!(component, Component::RootDir) && index < 2) {
-                    path.push(component);
+                    path = path.join(component);
                 }
             });
         dbg!(&url, &url_path, &path);
