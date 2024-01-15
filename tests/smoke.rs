@@ -5,10 +5,12 @@ fn smoke() -> Result<(), anyhow::Error> {
             let _ = tracing_subscriber::fmt()
                 .json()
                 .with_max_level(tracing::Level::TRACE)
+                .without_time()
                 .try_init();
         } else if #[cfg(feature = "logging")] {
             let _ = env_logger::builder()
                 .filter_level(log::LevelFilter::max())
+                .format_timestamp(None)
                 .is_test(true)
                 .try_init();
         }
@@ -31,7 +33,14 @@ fn smoke() -> Result<(), anyhow::Error> {
         .to_str()
         .unwrap()
         .to_string();
-    let file_url: Url = format!("file://{current_dir}").parse().expect("Valid URL");
+    cfg_if::cfg_if! {
+        if #[cfg(feature = "tracing")] {
+            tracing::trace!(cwd=current_dir);
+        } else if #[cfg(feature = "logging")] {
+            log::trace!("cwd={current_dir:?}");
+        }
+    }
+    let file_url: Url = format!("file:{current_dir}").parse().expect("Valid URL");
 
     let configuration = Configuration::new().with_url(env_url)?.with_url(file_url)?;
     let skip_soft_errors = true;

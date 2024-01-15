@@ -33,8 +33,12 @@ pub mod fs;
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigurationLoadError {
     /// An entity could not be found.
-    #[error("{loader} configuration loader could not found configuration `{url}`")]
-    NotFound { loader: String, url: Url },
+    #[error("{loader} configuration loader could not found {item} from URL `{url}`")]
+    NotFound {
+        loader: String,
+        url: Url,
+        item: Box<String>,
+    },
     /// Did not have enough permissions to read the contents.
     #[error("{loader} configuration loader has no access to load configuration from `{url}`")]
     NoAccess { loader: String, url: Url },
