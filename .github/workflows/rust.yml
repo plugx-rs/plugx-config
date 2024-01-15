@@ -26,6 +26,13 @@ jobs:
       - name: Clippy
         run: make clippy
 
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Documentation
+        run: make docs
+
   build:
     runs-on: ubuntu-latest
     steps:
@@ -44,19 +51,19 @@ jobs:
         include:
           - os: macos-latest
             target: x86_64-apple-darwin
-            name: Test macOS
+            name: Test [macOS]
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            name: Test Ubuntu GNU
+            name: Test [Ubuntu][GNU]
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
-            name: Test Ubuntu Musl
+            name: Test [Ubuntu][musl]
           - os: windows-latest
             target: x86_64-pc-windows-gnu
-            name: Test Windows GNU
+            name: Test [Windows][GNU]
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            name: Test Windows MSVC
+            name: Test [Windows][MSVC]
     steps:
       - uses: actions/checkout@v4
       - name: Maybe install macOS deps
@@ -72,20 +79,41 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y -qq musl-dev musl-tools
       - name: Test
-        run: make test TARGET_OPTION="--target=${{ matrix.target }}"
+        run: |
+          make test TARGET_OPTION="--target=${{ matrix.target }}"
 
   examples:
-    runs-on: ubuntu-latest
     needs:
       - build
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            name: Examples [macOS]
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            name: Examples [Ubuntu]
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            name: Examples [Windows]
     steps:
       - uses: actions/checkout@v4
-      - name: Examples
-        run: make examples
-
-  docs:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Documentation
-        run: make docs
+      - name: Maybe install macOS deps
+        if: contains(matrix.os, 'macos')
+        run: |
+          brew install make
+      - name: Install Rust target
+        run: |
+          rustup target add ${{ matrix.target }}
+      - name: Maybe install Linux deps
+        if: contains(matrix.os, 'ubuntu') && contains(matrix.target, 'musl')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y -qq musl-dev musl-tools
+      - name: Test
+        run: |
+          make examples TARGET_OPTION="--target=${{ matrix.target }}"
