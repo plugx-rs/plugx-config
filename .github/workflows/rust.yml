@@ -96,16 +96,10 @@ jobs:
             name: Examples [macOS]
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            name: Examples [Ubuntu][GNU]
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-musl
-            name: Examples [Ubuntu][musl]
-          - os: windows-latest
-            target: x86_64-pc-windows-gnu
-            name: Examples [Windows][GNU]
+            name: Examples [Ubuntu]
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            name: Examples [Windows][MSVC]
+            name: Examples [Windows]
     steps:
       - uses: actions/checkout@v4
       - name: Maybe install macOS deps
