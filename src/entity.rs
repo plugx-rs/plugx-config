@@ -19,7 +19,7 @@
 //! let (_, foo_entity) = loaded.iter().find(|(plugin_name, _)| plugin_name == "foo").expect("`foo` plugin config");
 //! // Above `loader` actually does this:
 //! let loader_name = loader.name();
-//! let mut foo_entity2 = ConfigurationEntity::new(url.clone(), plugin_name, loader_name)
+//! let mut foo_entity2 = ConfigurationEntity::new("MY_APP_NAME__*", url.clone(), plugin_name, loader_name)
 //!     .with_format("env")
 //!     .with_contents("BAR__BAZ=\"3.14\"\nQUX=\"false\"");
 //!
@@ -39,6 +39,7 @@ use url::Url;
 /// A configuration entity for each plugin.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ConfigurationEntity {
+    item: String,
     loader_name: String,
     url: Url,
     plugin_name: String,
@@ -54,13 +55,15 @@ impl ConfigurationEntity {
     /// don't and try to parse its  contents, All parsers that support
     /// [ConfigurationParser::is_format_supported] method try to validate the
     /// contents to pick it up for future parsing!
-    pub fn new<P, L>(url: Url, plugin_name: P, loader_name: L) -> Self
+    pub fn new<I, P, L>(item: I, url: Url, plugin_name: P, loader_name: L) -> Self
     where
+        I: AsRef<str>,
         P: AsRef<str>,
         L: AsRef<str>,
     {
         Self {
             url,
+            item: item.as_ref().to_string(),
             plugin_name: plugin_name.as_ref().to_string(),
             loader_name: loader_name.as_ref().to_string(),
             maybe_format: Default::default(),
@@ -94,6 +97,14 @@ impl ConfigurationEntity {
     pub fn with_parsed_contents<I: Into<Input>>(mut self, contents: I) -> Self {
         self.set_parsed_contents(contents);
         self
+    }
+
+    pub fn item(&self) -> &String {
+        &self.item
+    }
+
+    pub fn item_mut(&mut self) -> &mut String {
+        &mut self.item
     }
 
     pub fn url(&self) -> &Url {
@@ -165,7 +176,9 @@ impl ConfigurationEntity {
         } else if let Some(format) = self.guess_format(parser_list) {
             format
         } else {
-            return Err(ConfigurationParserError::ParserNotFound);
+            return Err(ConfigurationParserError::ParserNotFound {
+                format: "<unknown>".into(),
+            });
         };
         if let Some(parser) = parser_list
             .iter()
@@ -173,7 +186,7 @@ impl ConfigurationEntity {
         {
             parser.parse(contents.as_bytes())
         } else {
-            Err(ConfigurationParserError::ParserNotFound)
+            Err(ConfigurationParserError::ParserNotFound { format })
         }
     }
 

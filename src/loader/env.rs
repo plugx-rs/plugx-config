@@ -236,21 +236,21 @@ impl ConfigurationLoader for ConfigurationLoaderEnv {
             })
             .for_each(|(plugin_name, key, value)| {
                 let key_value = format!("{key}={value:?}");
-                if let Some((_, configuration)) =
-                    result.iter_mut().find(|(name, _)| *name == plugin_name)
+                if let Some((_, _, configuration)) =
+                    result.iter_mut().find(|(name, _, _)| *name == plugin_name)
                 {
                     *configuration += "\n";
                     *configuration += key_value.as_str();
                 } else {
-                    result.push((plugin_name, key_value));
+                    result.push((plugin_name, format!("{prefix}*"), key_value));
                 }
             });
         Ok(result
             .into_iter()
-            .map(|(plugin_name, contents)| {
+            .map(|(plugin_name, key, contents)| {
                 (
                     plugin_name.clone(),
-                    ConfigurationEntity::new(url.clone(), plugin_name, NAME)
+                    ConfigurationEntity::new(key, url.clone(), plugin_name, NAME)
                         .with_format("env")
                         .with_contents(contents),
                 )

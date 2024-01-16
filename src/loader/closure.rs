@@ -16,7 +16,7 @@
 //!     // TODO: check whitelist
 //!     // load configurations
 //!     // for example I load configuration for plugin named `foo`:
-//!     let entity = ConfigurationEntity::new(url.clone(), "foo", loader_name)
+//!     let entity = ConfigurationEntity::new("foo_sub_item", url.clone(), "foo", loader_name)
 //!         // If you do not set format here, `Configuration` struct will try to guess it later:
 //!         .with_format("yml")
 //!         // If you do not set contents here, the default value will be `plugx_input::Input::empty_map()`

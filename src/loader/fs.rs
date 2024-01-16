@@ -194,9 +194,8 @@ impl ConfigurationLoaderFs {
             Ok(list
                 .into_iter()
                 .map(|(plugin_name, format, path)| {
-                    let mut url = url.clone();
-                    url.set_path(path.to_str().expect("It was &str!"));
-                    ConfigurationEntity::new(url, plugin_name, NAME).with_format(format)
+                    ConfigurationEntity::new(path.to_str().unwrap(), url.clone(), plugin_name, NAME)
+                        .with_format(format)
                 })
                 .collect())
         } else if path.is_file() {
@@ -205,8 +204,13 @@ impl ConfigurationLoaderFs {
                     .map(|whitelist| whitelist.contains(&plugin_name))
                     .unwrap_or(true)
                 {
-                    let entity = ConfigurationEntity::new(url.clone(), plugin_name, NAME)
-                        .with_format(format);
+                    let entity = ConfigurationEntity::new(
+                        path.to_str().unwrap(),
+                        url.clone(),
+                        plugin_name,
+                        NAME,
+                    )
+                    .with_format(format);
                     Ok([entity].into())
                 } else {
                     Ok(Vec::new())
@@ -323,11 +327,8 @@ impl ConfigurationLoaderFs {
     }
 
     #[inline]
-    pub fn read_entity_contents(
-        entity: &mut ConfigurationEntity,
-        options: &ConfigurationLoaderFsOptions,
-    ) -> Result<(), io::Error> {
-        fs::read_to_string(Self::url_to_path(entity.url(), options)?).map(|contents| {
+    pub fn read_entity_contents(entity: &mut ConfigurationEntity) -> Result<(), io::Error> {
+        fs::read_to_string(entity.item()).map(|contents| {
             entity.set_contents(contents);
         })
     }
@@ -431,7 +432,7 @@ impl ConfigurationLoader for ConfigurationLoaderFs {
         let mut entity_list =
             Self::get_entity_list(url, &options, maybe_whitelist, skip_soft_errors)?;
         entity_list.iter_mut().try_for_each(|entity| {
-            match Self::read_entity_contents(entity, &options) {
+            match Self::read_entity_contents(entity) {
                 Ok(_) => {
                     cfg_if! {
                         if #[cfg(feature = "tracing")] {

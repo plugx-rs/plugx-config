@@ -17,10 +17,11 @@ pub enum ConfigurationError {
         source: ConfigurationLoadError,
     },
     /// Errors from [ConfigurationParserError].
-    #[error("Error in parsing `{plugin_name}` configuration from `{url}`")]
+    #[error("Error in parsing `{plugin_name}` configuration from `{url}` for `{item}`")]
     Parse {
         plugin_name: String,
         url: Url,
+        item: Box<String>,
         source: ConfigurationParserError,
     },
     /// Errors from [plugx_input::schema::InputSchemaError]

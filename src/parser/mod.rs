@@ -27,8 +27,8 @@ pub enum ConfigurationParserError {
         source: anyhow::Error,
     },
     /// Could not found parser or guess format to choose correct parser.
-    #[error("Could not found parser")]
-    ParserNotFound,
+    #[error("Could not found parser to parse format `{format}`")]
+    ParserNotFound { format: String },
 }
 
 /// A trait to parse configuration contents.
