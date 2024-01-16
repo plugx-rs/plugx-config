@@ -14,7 +14,7 @@ clippy:
 test:
 	RUST_BACKTRACE=1 cargo test ${TARGET_OPTION} --no-default-features --features="env,fs,json,yaml,toml${LOG_FEATURE}" -- --nocapture
 
-examples: example-basic
+examples: example-basic example-custom-loader
 
 example-basic:
 	APP_NAME__FOO__SERVER__ADDRESS="127.0.0.1" \
@@ -22,6 +22,9 @@ example-basic:
     APP_NAME__BAZ__LOGGING__LEVEL="debug" \
     APP_NAME__QUX__HTTPS__INSECURE="false" \
     RUST_BACKTRACE=1 cargo run ${TARGET_OPTION} --no-default-features --features="env,fs,json,yaml,toml${LOG_FEATURE}" --example basic -- --trace 'env://?prefix=APP_NAME' 'fs:///tests/etc/?strip-slash=true'
+
+example-custom-loader:
+	RUST_BACKTRACE=1 cargo run ${TARGET_OPTION} --no-default-features --features="env,fs,json,yaml,toml${LOG_FEATURE}" --example custom-loader -- --trace 'cfg://?name=APP_NAME&soft_errors=NotFound'
 
 docs:
 	cargo doc --all-features

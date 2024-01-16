@@ -63,6 +63,7 @@ env_logger = "0.10.0"
 tempdir = "0.3.7"
 deser-hjson = "2.2.0"
 clap = {version = "4.4.13", features = ["derive"]}
+dirs = "5.0.1"
 
 [package.metadata.docs.rs]
 all-features = true

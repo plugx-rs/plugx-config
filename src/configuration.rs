@@ -487,6 +487,7 @@ pub fn parse(
                                 ConfigurationError::Parse {
                                     plugin_name: plugin_name.to_string(),
                                     url: configuration.url().clone(),
+                                    item: configuration.item().clone().into(),
                                     source: error,
                                 }
                             })?;
