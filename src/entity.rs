@@ -6,19 +6,19 @@
 //! use plugx_config::{
 //!     ext::{url::Url, plugx_input::Input},
 //!     entity::ConfigurationEntity,
-//!     loader::{ConfigurationLoader, env::ConfigurationLoaderEnv},
-//!     parser::{ConfigurationParser, env::ConfigurationParserEnv},
+//!     loader::{Loader, env::Env as EnvLoader},
+//!     parser::{Parser, env::Env as EnvParser},
 //! };
 //!
 //! let url = "env://".parse::<Url>().expect("Valid URL");
 //! let plugin_name = "foo";
-//! let loader = ConfigurationLoaderEnv::new().with_prefix("MY_APP_NAME").with_separator("__");
+//! let loader = EnvLoader::new().with_prefix("MY_APP_NAME").with_separator("__");
 //! set_var("MY_APP_NAME__FOO__BAR__BAZ", "3.14");
 //! set_var("MY_APP_NAME__FOO__QUX", "false");
 //! let loaded = loader.load(&url, None, false).unwrap();
 //! let (_, foo_entity) = loaded.iter().find(|(plugin_name, _)| plugin_name == "foo").expect("`foo` plugin config");
 //! // Above `loader` actually does this:
-//! let loader_name = loader.name();
+//! let loader_name = format!("{loader}");
 //! let mut foo_entity2 = ConfigurationEntity::new("MY_APP_NAME__*", url.clone(), plugin_name, loader_name)
 //!     .with_format("env")
 //!     .with_contents("BAR__BAZ=\"3.14\"\nQUX=\"false\"");
@@ -26,12 +26,12 @@
 //! assert_eq!(&foo_entity2, foo_entity);
 //!
 //! // We can pass a list of `ConfigurationParser` to an entity to parse its contents.
-//! let parser = ConfigurationParserEnv::new().with_key_separator("__");
-//! let parser_list: Vec<Box<dyn ConfigurationParser>> = vec![Box::new(parser)];
+//! let parser = EnvParser::new().with_key_separator("__");
+//! let parser_list: Vec<Box<dyn Parser>> = vec![Box::new(parser)];
 //! let input = foo_entity2.parse_contents_mut(&parser_list).unwrap();
 //! assert_eq!(input.as_map().get("qux").expect("`qux` value"), &false.into());
 //! ```
-use crate::parser::{ConfigurationParser, ConfigurationParserError};
+use crate::parser::{Error, Parser};
 use plugx_input::Input;
 use std::fmt::{Display, Formatter};
 use url::Url;
@@ -53,7 +53,7 @@ impl ConfigurationEntity {
     ///
     /// It's better to set the format (via [Self::set_format] or [Self::with_format]) and if we
     /// don't and try to parse its  contents, All parsers that support
-    /// [ConfigurationParser::is_format_supported] method try to validate the
+    /// [Parser::is_format_supported] method try to validate the
     /// contents to pick it up for future parsing!
     pub fn new<I, P, L>(item: I, url: Url, plugin_name: P, loader_name: L) -> Self
     where
@@ -149,7 +149,7 @@ impl ConfigurationEntity {
 
     /// We have to call it after calling [Self::set_contents] or [Self::with_contents] and If no
     /// contents is set, It yields [None] too.
-    pub fn guess_format(&self, parser_list: &[Box<dyn ConfigurationParser>]) -> Option<String> {
+    pub fn guess_format(&self, parser_list: &[Box<dyn Parser>]) -> Option<String> {
         let contents = self.maybe_contents()?;
         let bytes = contents.as_bytes();
         if let Some(parser) = parser_list
@@ -162,10 +162,7 @@ impl ConfigurationEntity {
         }
     }
 
-    pub fn parse_contents(
-        &self,
-        parser_list: &[Box<dyn ConfigurationParser>],
-    ) -> Result<Input, ConfigurationParserError> {
+    pub fn parse_contents(&self, parser_list: &[Box<dyn Parser>]) -> Result<Input, Error> {
         let contents = if let Some(contents) = self.maybe_contents() {
             contents
         } else {
@@ -176,7 +173,7 @@ impl ConfigurationEntity {
         } else if let Some(format) = self.guess_format(parser_list) {
             format
         } else {
-            return Err(ConfigurationParserError::ParserNotFound {
+            return Err(Error::ParserNotFound {
                 format: "<unknown>".into(),
             });
         };
@@ -186,14 +183,14 @@ impl ConfigurationEntity {
         {
             parser.parse(contents.as_bytes())
         } else {
-            Err(ConfigurationParserError::ParserNotFound { format })
+            Err(Error::ParserNotFound { format })
         }
     }
 
     pub fn parse_contents_mut(
         &mut self,
-        parser_list: &[Box<dyn ConfigurationParser>],
-    ) -> Result<&mut Input, ConfigurationParserError> {
+        parser_list: &[Box<dyn Parser>],
+    ) -> Result<&mut Input, Error> {
         let input = self.parse_contents(parser_list)?;
         self.set_parsed_contents(input);
         Ok(self

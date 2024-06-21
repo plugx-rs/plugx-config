@@ -4,7 +4,7 @@
 //!
 //! ### Example
 //! ```rust
-//! use plugx_config::parser::{ConfigurationParser, env::ConfigurationParserEnv};
+//! use plugx_config::parser::{Parser, env::Env};
 //! use plugx_input::Input;
 //!
 //! let bytes = br#"
@@ -14,7 +14,7 @@
 //! HELLO='["w", "o", "l", "d"]' # A JSON list
 //! "#;
 //!
-//! let parser = ConfigurationParserEnv::new();
+//! let parser = Env::new();
 //! // You can set nested key separator like this:
 //! // parser.set_key_separator("__");
 //! let parsed: Input = parser.parse(bytes.as_slice()).unwrap();
@@ -39,18 +39,18 @@
 //! ```
 //!
 
-use crate::parser::ConfigurationParser;
+use crate::parser::Parser;
 use anyhow::{anyhow, bail};
 use cfg_if::cfg_if;
 use plugx_input::{position, position::InputPosition, Input};
 use std::fmt::{Debug, Display, Formatter};
 
 #[derive(Debug, Clone)]
-pub struct ConfigurationParserEnv {
+pub struct Env {
     separator: String,
 }
 
-impl Default for ConfigurationParserEnv {
+impl Default for Env {
     fn default() -> Self {
         Self {
             separator: crate::loader::env::default::separator(),
@@ -58,17 +58,13 @@ impl Default for ConfigurationParserEnv {
     }
 }
 
-impl Display for ConfigurationParserEnv {
+impl Display for Env {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str("Environment-Variables parser")
+        f.write_str("Environment-Variables")
     }
 }
 
-impl ConfigurationParser for ConfigurationParserEnv {
-    fn name(&self) -> String {
-        "Environment-Variables".to_string()
-    }
-
+impl Parser for Env {
     fn supported_format_list(&self) -> Vec<String> {
         ["env".into()].into()
     }
@@ -121,7 +117,7 @@ impl ConfigurationParser for ConfigurationParserEnv {
     }
 }
 
-impl ConfigurationParserEnv {
+impl Env {
     pub fn new() -> Self {
         Default::default()
     }

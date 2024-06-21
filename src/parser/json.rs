@@ -4,7 +4,7 @@
 //!
 //! ### Example
 //! ```rust
-//! use plugx_config::parser::{ConfigurationParser, json::ConfigurationParserJson};
+//! use plugx_config::parser::{Parser, json::Json};
 //! use plugx_input::Input;
 //!
 //! let bytes = br#"
@@ -20,7 +20,7 @@
 //! }
 //! "#;
 //!
-//! let parser = ConfigurationParserJson::new();
+//! let parser = Json::new();
 //! let parsed: Input = parser.parse(bytes.as_slice()).unwrap();
 //!
 //! assert!(parsed.is_map());
@@ -32,38 +32,34 @@
 //! );
 //! ```
 
-use crate::parser::ConfigurationParser;
+use crate::parser::Parser;
 use anyhow::anyhow;
 use cfg_if::cfg_if;
 use plugx_input::Input;
 use std::fmt::{Debug, Display, Formatter};
 
 #[derive(Clone, Copy, Default)]
-pub struct ConfigurationParserJson;
+pub struct Json;
 
-impl Display for ConfigurationParserJson {
+impl Display for Json {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str("JSON parser")
+        f.write_str("JSON")
     }
 }
 
-impl Debug for ConfigurationParserJson {
+impl Debug for Json {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ConfigurationParserJson").finish()
     }
 }
 
-impl ConfigurationParserJson {
+impl Json {
     pub fn new() -> Self {
         Default::default()
     }
 }
 
-impl ConfigurationParser for ConfigurationParserJson {
-    fn name(&self) -> String {
-        "JSON".into()
-    }
-
+impl Parser for Json {
     fn supported_format_list(&self) -> Vec<String> {
         ["json".into()].into()
     }

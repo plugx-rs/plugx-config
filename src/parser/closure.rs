@@ -6,8 +6,8 @@
 //! ```rust
 //! use plugx_config::{
 //!     ext::{plugx_input::Input, anyhow::anyhow},
-//!     error::ConfigurationParserError,
-//!     parser::{ConfigurationParser, closure::ConfigurationParserFn}
+//!     error::Error,
+//!     parser::{Parser, closure::Closure}
 //! };
 //!
 //! let parser_fn = |bytes: &[u8]| -> anyhow::Result<Input> {
@@ -16,7 +16,7 @@
 //!
 //! let parser_name = "HJSON";
 //! let parser_format = "hjson";
-//! let parser = ConfigurationParserFn::new("HJSNO", "hjson", Box::new(parser_fn));
+//! let parser = Closure::new("HJSNO", "hjson", Box::new(parser_fn));
 //! let bytes = br#"
 //! {
 //!     hello: ["w", "o", "l", "d"]
@@ -51,7 +51,7 @@
 //! ```
 //!
 
-use crate::parser::ConfigurationParser;
+use crate::parser::Parser;
 use plugx_input::Input;
 use std::fmt::{Debug, Display, Formatter};
 
@@ -61,25 +61,20 @@ pub type BoxedParserFn = Box<dyn Fn(&[u8]) -> anyhow::Result<Input> + Send + Syn
 pub type BoxedValidatorFn = Box<dyn Fn(&[u8]) -> Option<bool> + Send + Sync>;
 
 /// Builder struct.
-pub struct ConfigurationParserFn {
+pub struct Closure {
     name: String,
     parser: BoxedParserFn,
     validator: BoxedValidatorFn,
     supported_format_list: Vec<String>,
 }
 
-impl Display for ConfigurationParserFn {
+impl Display for Closure {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str(
-            self.supported_format_list
-                .iter()
-                .last()
-                .map_or("unknown", |format| format.as_str()),
-        )
+        f.write_str(self.name.as_str())
     }
 }
 
-impl Debug for ConfigurationParserFn {
+impl Debug for Closure {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ConfigurationParserFn")
             .field("name", &self.name)
@@ -88,7 +83,7 @@ impl Debug for ConfigurationParserFn {
     }
 }
 
-impl ConfigurationParserFn {
+impl Closure {
     pub fn new<N: AsRef<str>, F: AsRef<str>>(
         name: N,
         supported_format: F,
@@ -133,11 +128,7 @@ impl ConfigurationParserFn {
     }
 }
 
-impl ConfigurationParser for ConfigurationParserFn {
-    fn name(&self) -> String {
-        self.name.clone()
-    }
-
+impl Parser for Closure {
     fn supported_format_list(&self) -> Vec<String> {
         self.supported_format_list.clone()
     }

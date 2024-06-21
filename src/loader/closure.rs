@@ -4,7 +4,7 @@
 //! ```rust
 //! use plugx_config::{
 //!     entity::ConfigurationEntity,
-//!     loader::{ConfigurationLoader, closure::ConfigurationLoaderFn},
+//!     loader::{Loader, closure::Closure},
 //!     ext::url::Url,
 //! };
 //!
@@ -25,7 +25,7 @@
 //!     Ok(result)
 //! };
 //! let url = "xyz:///my/own/path?my_option=value".parse().unwrap();
-//! let loader = ConfigurationLoaderFn::new(loader_name, Box::new(loader_fn), url_scheme);
+//! let loader = Closure::new(loader_name, Box::new(loader_fn), url_scheme);
 //! let loaded = loader.load(&url, None, false).unwrap();
 //! assert_eq!(loaded.len(), 1);
 //! ```
@@ -36,30 +36,26 @@
 
 use crate::{
     entity::ConfigurationEntity,
-    loader::{ConfigurationLoadError, ConfigurationLoader},
+    loader::{Error, Loader},
 };
-use std::fmt::{Debug, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use url::Url;
 
 /// A `|&Url, Option<&[String]>, bool| -> Result<Vec<String, ConfigurationEntity>, ConfigurationLoadError>` [Fn]
 pub type BoxedLoaderFn = Box<
-    dyn Fn(
-            &Url,
-            Option<&[String]>,
-            bool,
-        ) -> Result<Vec<(String, ConfigurationEntity)>, ConfigurationLoadError>
+    dyn Fn(&Url, Option<&[String]>, bool) -> Result<Vec<(String, ConfigurationEntity)>, Error>
         + Send
         + Sync,
 >;
 
 /// Builder struct.
-pub struct ConfigurationLoaderFn {
+pub struct Closure {
     name: String,
     loader: BoxedLoaderFn,
     scheme_list: Vec<String>,
 }
 
-impl Debug for ConfigurationLoaderFn {
+impl Debug for Closure {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ConfigurationLoaderFn")
             .field("name", &self.name)
@@ -68,7 +64,7 @@ impl Debug for ConfigurationLoaderFn {
     }
 }
 
-impl ConfigurationLoaderFn {
+impl Closure {
     pub fn new<S: AsRef<str>, N: AsRef<str>>(name: N, loader: BoxedLoaderFn, scheme: S) -> Self {
         Self {
             name: name.as_ref().to_string(),
@@ -108,11 +104,13 @@ impl ConfigurationLoaderFn {
     }
 }
 
-impl ConfigurationLoader for ConfigurationLoaderFn {
-    fn name(&self) -> String {
-        self.name.clone()
+impl Display for Closure {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.name.as_str())
     }
+}
 
+impl Loader for Closure {
     fn scheme_list(&self) -> Vec<String> {
         self.scheme_list.clone()
     }
@@ -122,7 +120,7 @@ impl ConfigurationLoader for ConfigurationLoaderFn {
         url: &Url,
         maybe_whitelist: Option<&[String]>,
         skip_soft_errors: bool,
-    ) -> Result<Vec<(String, ConfigurationEntity)>, ConfigurationLoadError> {
+    ) -> Result<Vec<(String, ConfigurationEntity)>, Error> {
         (self.loader)(url, maybe_whitelist, skip_soft_errors)
     }
 }

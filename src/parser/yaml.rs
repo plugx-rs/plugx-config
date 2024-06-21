@@ -4,7 +4,7 @@
 //!
 //! ### Example
 //! ```rust
-//! use plugx_config::parser::{ConfigurationParser, yaml::ConfigurationParserYaml};
+//! use plugx_config::parser::{Parser, yaml::Yaml};
 //! use plugx_input::Input;
 //!
 //! let bytes = br#"
@@ -20,7 +20,7 @@
 //!   xyz: false
 //! "#;
 //!
-//! let parser = ConfigurationParserYaml::new();
+//! let parser = Yaml::new();
 //! // You can set nested key separator like this:
 //! // parser.set_key_separator("__");
 //! let parsed: Input = parser.try_parse(bytes.as_slice()).unwrap();
@@ -45,32 +45,28 @@
 //! ```
 //!
 
-use crate::parser::ConfigurationParser;
+use crate::parser::Parser;
 use anyhow::anyhow;
 use cfg_if::cfg_if;
 use plugx_input::Input;
 use std::fmt::{Debug, Display, Formatter};
 
 #[derive(Default, Debug, Copy, Clone)]
-pub struct ConfigurationParserYaml;
+pub struct Yaml;
 
-impl Display for ConfigurationParserYaml {
+impl Display for Yaml {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str("YAML parser")
+        f.write_str("YAML")
     }
 }
 
-impl ConfigurationParserYaml {
+impl Yaml {
     pub fn new() -> Self {
         Default::default()
     }
 }
 
-impl ConfigurationParser for ConfigurationParserYaml {
-    fn name(&self) -> String {
-        "YAML".into()
-    }
-
+impl Parser for Yaml {
     fn supported_format_list(&self) -> Vec<String> {
         ["yml".into(), "yaml".into()].into()
     }

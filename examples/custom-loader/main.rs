@@ -2,14 +2,14 @@ use anyhow::anyhow;
 use cfg_if::cfg_if;
 use plugx_config::{
     entity::ConfigurationEntity,
-    error::ConfigurationLoadError,
     ext::{
         anyhow::{Context, Result},
         serde::Deserialize,
     },
-    loader::{deserialize_query_string, ConfigurationLoader, SoftErrors},
+    loader::{deserialize_query_string, Error as LoaderError, Loader, SoftErrors},
     Configuration, Url,
 };
+use std::fmt::{Display, Formatter};
 use std::{fs, io::ErrorKind, path::PathBuf};
 
 #[derive(Debug, Default)]
@@ -31,13 +31,13 @@ enum MySoftErrors {
     NotFound,
 }
 
-//
-impl ConfigurationLoader for MyLoader {
-    // For logging:
-    fn name(&self) -> String {
-        "Home".into()
+// For logging:
+impl Display for MyLoader {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str("HOME")
     }
-
+} //
+impl Loader for MyLoader {
     // So any URL stating with "cfg" and "config" is assigned to this loader
     // For example:
     //    cfg://?name=MY_APP
@@ -51,16 +51,16 @@ impl ConfigurationLoader for MyLoader {
         url: &Url,
         maybe_whitelist: Option<&[String]>,
         skip_soft_errors: bool,
-    ) -> std::result::Result<Vec<(String, ConfigurationEntity)>, ConfigurationLoadError> {
+    ) -> std::result::Result<Vec<(String, ConfigurationEntity)>, LoaderError> {
         // Deserialize given URL query-string with helper function `deserialize_query_string`:
-        let url_options: MyOptions = deserialize_query_string(self.name(), url)?;
+        let url_options: MyOptions = deserialize_query_string(format!("{self}"), url)?;
         let config_dir = match dirs::config_dir() {
             Some(config_dir) => config_dir,
             None => {
                 return if skip_soft_errors && url_options.soft_errors.skip_all() {
                     Ok(Vec::new())
                 } else {
-                    Err(ConfigurationLoadError::Other(anyhow!(
+                    Err(LoaderError::Other(anyhow!(
                         "Could not get system config directory"
                     )))
                 }
@@ -83,8 +83,8 @@ impl ConfigurationLoader for MyLoader {
             {
                 Ok(Vec::new())
             } else {
-                Err(ConfigurationLoadError::InvalidUrl {
-                    loader: self.name(),
+                Err(LoaderError::InvalidUrl {
+                    loader: format!("{self}"),
                     url: url.clone().into(),
                     source: anyhow!("Path ({sub_path:?}) is not a directory or does not exist"),
                 })
@@ -106,21 +106,20 @@ impl ConfigurationLoader for MyLoader {
                     // Keep files with extension:
                     .filter(|path| path.extension().is_some())
                     .try_for_each(|path| {
-                        let contents = fs::read_to_string(&path).map_err(|error| {
-                            ConfigurationLoadError::Load {
-                                loader: self.name().into(),
+                        let contents =
+                            fs::read_to_string(&path).map_err(|error| LoaderError::Load {
+                                loader: format!("{self}"),
                                 url: url.clone().into(),
                                 description: format!("Could not read file contents from {path:?}")
                                     .into(),
                                 source: anyhow!(error),
-                            }
-                        })?;
+                            })?;
                         let plugin_name =
                             path.file_stem().unwrap().to_str().unwrap().to_lowercase();
                         // Check whitelist:
                         if let Some(whitelist) = maybe_whitelist {
                             if !whitelist.contains(&plugin_name) {
-                                return Ok::<_, ConfigurationLoadError>(());
+                                return Ok::<_, LoaderError>(());
                             }
                         }
                         let format = path.extension().unwrap().to_str().unwrap().to_lowercase();
@@ -128,12 +127,12 @@ impl ConfigurationLoader for MyLoader {
                             path.to_str().unwrap(),
                             url.clone(),
                             &plugin_name,
-                            self.name(),
+                            format!("{self}"),
                         )
                         .with_format(format)
                         .with_contents(contents);
                         config_list.push((plugin_name, config_entity));
-                        Ok::<_, ConfigurationLoadError>(())
+                        Ok::<_, LoaderError>(())
                     })?;
                 Ok(config_list)
             }
@@ -145,8 +144,8 @@ impl ConfigurationLoader for MyLoader {
                 {
                     Ok(Vec::new())
                 } else {
-                    Err(ConfigurationLoadError::Load {
-                        loader: self.name().into(),
+                    Err(LoaderError::Load {
+                        loader: format!("{self}"),
                         url: url.clone().into(),
                         description: format!("Could not read directory contents from {sub_path:?}")
                             .into(),
