@@ -6,7 +6,7 @@
 //! ```rust
 //! use std::env::set_var;
 //! use plugx_config::{
-//!     loader::{ConfigurationLoader, env::ConfigurationLoaderEnv},
+//!     loader::{Loader, env::Env},
 //!     ext::url::Url,
 //! };
 //!
@@ -15,7 +15,7 @@
 //!
 //! let url = Url::try_from("env://?prefix=MY_APP_NAME").expect("A valid URL!");
 //!
-//! let mut loader = ConfigurationLoaderEnv::new();
+//! let mut loader = Env::new();
 //! // You could set `prefix`, `separator`, and `strip_prefix` programmatically like this:
 //! // loader.[set|with]_prefix("MY_APP_NAME");
 //! // loader.[set|with]_separator("__");
@@ -47,10 +47,11 @@
 
 use crate::{
     entity::ConfigurationEntity,
-    loader::{self, ConfigurationLoadError, ConfigurationLoader},
+    loader::{self, Error, Loader},
 };
 use cfg_if::cfg_if;
 use serde::Deserialize;
+use std::fmt::{Display, Formatter};
 use std::{env, fmt::Debug};
 use url::Url;
 
@@ -59,19 +60,19 @@ pub const SCHEME_LIST: &[&str] = &["env"];
 
 /// Loads configurations from Environment-Variables.
 #[derive(Debug, Default, Clone)]
-pub struct ConfigurationLoaderEnv {
-    options: ConfigurationLoaderEnvOptions,
+pub struct Env {
+    options: EnvOptions,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
-struct ConfigurationLoaderEnvOptions {
+struct EnvOptions {
     prefix: String,
     separator: String,
     strip_prefix: bool,
 }
 
-impl Default for ConfigurationLoaderEnvOptions {
+impl Default for EnvOptions {
     fn default() -> Self {
         Self {
             prefix: default::prefix(),
@@ -106,7 +107,7 @@ pub mod default {
     }
 }
 
-impl ConfigurationLoaderEnv {
+impl Env {
     /// Same as `default()` method.
     pub fn new() -> Self {
         Default::default()
@@ -146,11 +147,13 @@ impl ConfigurationLoaderEnv {
     }
 }
 
-impl ConfigurationLoader for ConfigurationLoaderEnv {
-    fn name(&self) -> String {
-        NAME.into()
+impl Display for Env {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str(NAME)
     }
+}
 
+impl Loader for Env {
     /// In this case `["env"]`.
     fn scheme_list(&self) -> Vec<String> {
         SCHEME_LIST.iter().cloned().map(String::from).collect()
@@ -162,8 +165,8 @@ impl ConfigurationLoader for ConfigurationLoaderEnv {
         url: &Url,
         maybe_whitelist: Option<&[String]>,
         _skip_soft_errors: bool,
-    ) -> Result<Vec<(String, ConfigurationEntity)>, ConfigurationLoadError> {
-        let ConfigurationLoaderEnvOptions {
+    ) -> Result<Vec<(String, ConfigurationEntity)>, Error> {
+        let EnvOptions {
             mut prefix,
             mut separator,
             mut strip_prefix,

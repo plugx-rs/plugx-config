@@ -9,7 +9,7 @@ pub mod parser;
 #[doc(inline)]
 pub use configuration::Configuration;
 #[doc(inline)]
-pub use error::ConfigurationError;
+pub use error::Error;
 #[doc(inline)]
 /// Final configuration data type
 pub use plugx_input::Input;

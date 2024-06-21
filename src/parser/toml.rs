@@ -4,7 +4,7 @@
 //!
 //! ### Example
 //! ```rust
-//! use plugx_config::parser::{ConfigurationParser, toml::ConfigurationParserToml};
+//! use plugx_config::parser::{Parser, toml::Toml};
 //! use plugx_input::Input;
 //!
 //! let bytes = br#"
@@ -15,7 +15,7 @@
 //! xyz = false
 //! "#;
 //!
-//! let parser = ConfigurationParserToml::new();
+//! let parser = Toml::new();
 //! let parsed: Input = parser.parse(bytes.as_slice()).unwrap();
 //! assert!(parsed.is_map());
 //! let map = parsed.as_map();
@@ -26,26 +26,28 @@
 //! );
 //! ```
 
-use crate::parser::ConfigurationParser;
+use crate::parser::Parser;
 use anyhow::anyhow;
 use cfg_if::cfg_if;
 use plugx_input::Input;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display, Formatter};
 
 #[derive(Default, Debug, Clone, Copy)]
-pub struct ConfigurationParserToml;
+pub struct Toml;
 
-impl ConfigurationParserToml {
+impl Toml {
     pub fn new() -> Self {
         Default::default()
     }
 }
 
-impl ConfigurationParser for ConfigurationParserToml {
-    fn name(&self) -> String {
-        "TOML".to_string()
+impl Display for Toml {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str("TOML")
     }
+}
 
+impl Parser for Toml {
     fn supported_format_list(&self) -> Vec<String> {
         ["toml".into()].into()
     }

@@ -6,20 +6,19 @@
 //! A loader also should try to set contents format for each plugin. For example [mod@fs] loader (that loads
 //! configurations from filesystem) guesses content formats from file extensions.
 //!
-//! Every configuration loader (every implementor of [ConfigurationLoader]) accepts a URL and maybe a
+//! Every configuration loader (every implementor of [Loader]) accepts a URL and maybe a
 //! whitelist of plugin names. It can parse the URL to detect and validate its own options. For example [mod@env] (that
 //! loads configuration from environment-variables) accepts a URL like `env://?prefix=MY_APP_NAME`.
 //!
-//! Also a Loader can be mark some errors skippable! For more information refer to documentation of the loader itself.
+//! Also, a Loader can be mark some errors skippable! For more information refer to documentation of the loader itself.
 //!
-//! Note that generally you do not need to implement [ConfigurationLoader], provided [mod@closure] lets you make your
+//! Note that generally you do not need to implement [Loader], provided [mod@closure] lets you make your
 //! own loader with just one [Fn] closure.
 
 use crate::entity::ConfigurationEntity;
-use serde::de::{Error, IntoDeserializer, Visitor};
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{de::IntoDeserializer, Deserialize, Deserializer, Serialize};
 use std::fmt;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 use std::marker::PhantomData;
 use url::Url;
 
@@ -31,7 +30,7 @@ pub mod fs;
 
 /// Load error type.
 #[derive(Debug, thiserror::Error)]
-pub enum ConfigurationLoadError {
+pub enum Error {
     /// An entity could not be found.
     #[error("{loader} configuration loader could not found {item} from URL `{url}`")]
     NotFound {
@@ -143,10 +142,7 @@ struct SoftErrorsVisitor<T> {
 }
 
 /// A trait to load configurations for one or more plugins.
-pub trait ConfigurationLoader: Send + Sync + Debug {
-    /// Name of the loader (for logging purposes).
-    fn name(&self) -> String;
-
+pub trait Loader: Send + Sync + Debug + Display {
     /// List of URL schemes that this loader supports.
     ///
     /// Different URL may be assigned to this loader by their scheme value.
@@ -163,7 +159,7 @@ pub trait ConfigurationLoader: Send + Sync + Debug {
         url: &Url,
         maybe_whitelist: Option<&[String]>,
         skip_soft_errors: bool,
-    ) -> Result<Vec<(String, ConfigurationEntity)>, ConfigurationLoadError>;
+    ) -> Result<Vec<(String, ConfigurationEntity)>, Error>;
 }
 
 #[cfg(feature = "qs")]
@@ -173,13 +169,11 @@ pub trait ConfigurationLoader: Send + Sync + Debug {
 pub fn deserialize_query_string<T: serde::de::DeserializeOwned>(
     loader_name: impl AsRef<str>,
     url: &Url,
-) -> Result<T, ConfigurationLoadError> {
-    serde_qs::from_str(url.query().unwrap_or_default()).map_err(|error| {
-        ConfigurationLoadError::InvalidUrl {
-            loader: loader_name.as_ref().to_string(),
-            source: error.into(),
-            url: url.to_string(),
-        }
+) -> Result<T, Error> {
+    serde_qs::from_str(url.query().unwrap_or_default()).map_err(|error| Error::InvalidUrl {
+        loader: loader_name.as_ref().to_string(),
+        source: error.into(),
+        url: url.to_string(),
     })
 }
 
@@ -240,7 +234,7 @@ impl<'de, T: Deserialize<'de>> Default for SoftErrors<T> {
     }
 }
 
-impl<'de, T> Visitor<'de> for SoftErrorsVisitor<T>
+impl<'de, T> serde::de::Visitor<'de> for SoftErrorsVisitor<T>
 where
     T: Deserialize<'de>,
 {
@@ -252,7 +246,7 @@ where
 
     fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
     where
-        E: Error,
+        E: serde::de::Error,
     {
         let parts: Vec<_> = v
             .split('.')
@@ -270,14 +264,14 @@ where
 
     fn visit_borrowed_str<E>(self, v: &'de str) -> Result<Self::Value, E>
     where
-        E: Error,
+        E: serde::de::Error,
     {
         self.visit_str(v)
     }
 
     fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
     where
-        E: Error,
+        E: serde::de::Error,
     {
         self.visit_str(v.as_str())
     }

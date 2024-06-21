@@ -7,7 +7,7 @@
 //! ```rust
 //! use std::{fs, collections::HashMap};
 //! use tempdir::TempDir;
-//! use plugx_config::loader::{ConfigurationLoader, fs::{ConfigurationLoaderFs, SoftErrorsFs}};
+//! use plugx_config::loader::{Loader, fs::{Fs, SoftErrorsFs}};
 //! use url::Url;
 //!
 //! // Create a temporary directory containing `foo.json`, `bar.yaml`, and `baz.toml`:
@@ -20,7 +20,7 @@
 //! fs::write(&baz, "hello = \"world\"").unwrap();
 //! let url = Url::try_from(format!("file://{}", tmp_dir.path().to_str().unwrap()).as_str()).unwrap();
 //!
-//! let mut loader = ConfigurationLoaderFs::new();
+//! let mut loader = Fs::new();
 //! // You could set some skippable errors here.
 //! // For example if you're loading contents of one file that may potentially not exists:
 //! // loader.add_skippable_error(SkippbaleErrorKind::NotFound)
@@ -50,11 +50,12 @@
 
 use crate::{
     entity::ConfigurationEntity,
-    loader::{self, ConfigurationLoadError, ConfigurationLoader, SoftErrors},
+    loader::{self, Error, Loader, SoftErrors},
 };
 use anyhow::anyhow;
 use cfg_if::cfg_if;
 use serde::Deserialize;
+use std::fmt::{Display, Formatter};
 use std::{
     collections::HashMap,
     env::current_dir,
@@ -69,18 +70,18 @@ pub const SCHEME_LIST: &[&str] = &["fs", "file"];
 
 /// Loads configurations from filesystem.
 #[derive(Default, Clone, Debug)]
-pub struct ConfigurationLoaderFs {
-    options: ConfigurationLoaderFsOptions,
+pub struct Fs {
+    options: FsOptions,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default, rename_all = "kebab-case")]
-pub struct ConfigurationLoaderFsOptions {
+pub struct FsOptions {
     strip_slash: Option<bool>,
     soft_errors: SoftErrors<SoftErrorsFs>,
 }
 
-impl ConfigurationLoaderFsOptions {
+impl FsOptions {
     pub fn contains(&self, error: io::ErrorKind) -> bool {
         SoftErrorsFs::try_from(error)
             .map(|error| self.soft_errors.contains(&error))
@@ -109,7 +110,7 @@ impl TryFrom<io::ErrorKind> for SoftErrorsFs {
 }
 
 #[doc(hidden)]
-impl ConfigurationLoaderFs {
+impl Fs {
     #[inline]
     pub fn get_plugin_name_and_format<P: AsRef<Path>>(path: P) -> Option<(String, String)> {
         Self::get_plugin_name(&path)
@@ -143,13 +144,12 @@ impl ConfigurationLoaderFs {
     #[inline]
     pub(super) fn get_entity_list(
         url: &Url,
-        options: &ConfigurationLoaderFsOptions,
+        options: &FsOptions,
         maybe_whitelist: Option<&[String]>,
         skip_soft_errors: bool,
-    ) -> Result<Vec<ConfigurationEntity>, ConfigurationLoadError> {
-        let path = Self::url_to_path(url, options).map_err(|_| {
-            ConfigurationLoadError::Other(anyhow!("Could not detect current working directory"))
-        })?;
+    ) -> Result<Vec<ConfigurationEntity>, Error> {
+        let path = Self::url_to_path(url, options)
+            .map_err(|_| Error::Other(anyhow!("Could not detect current working directory")))?;
         if path.is_dir() {
             let list = match Self::get_directory_file_list(&path, maybe_whitelist) {
                 Ok(list) => list,
@@ -166,7 +166,7 @@ impl ConfigurationLoaderFs {
                         }
                         Ok(Vec::new())
                     } else {
-                        Err(ConfigurationLoadError::Load {
+                        Err(Error::Load {
                             loader: NAME.to_string(),
                             url: url.clone(),
                             description: "load directory file list".to_string().into(),
@@ -180,7 +180,7 @@ impl ConfigurationLoaderFs {
                 if let Some(other_format) = plugins.get(plugin_name) {
                     let mut url = url.clone();
                     url.set_query(None);
-                    return Err(ConfigurationLoadError::Duplicate {
+                    return Err(Error::Duplicate {
                         loader: NAME.to_string().into(),
                         url,
                         plugin: plugin_name.to_string().into(),
@@ -228,7 +228,7 @@ impl ConfigurationLoaderFs {
                 }
                 Ok(Vec::new())
             } else {
-                Err(ConfigurationLoadError::InvalidUrl {
+                Err(Error::InvalidUrl {
                     loader: NAME.to_string(),
                     url: url.to_string(),
                     source: anyhow!("Could not parse plugin name/format"),
@@ -248,7 +248,7 @@ impl ConfigurationLoaderFs {
                 }
                 Ok(Vec::new())
             } else {
-                Err(ConfigurationLoadError::InvalidUrl {
+                Err(Error::InvalidUrl {
                     loader: NAME.to_string(),
                     url: url.to_string(),
                     source: anyhow!("URL is not pointing to a directory or regular file"),
@@ -267,7 +267,7 @@ impl ConfigurationLoaderFs {
             }
             Ok(Vec::new())
         } else {
-            Err(ConfigurationLoadError::NotFound {
+            Err(Error::NotFound {
                 loader: NAME.to_string(),
                 url: url.clone(),
                 item: format!("path `{path:?}`").into(),
@@ -334,10 +334,7 @@ impl ConfigurationLoaderFs {
     }
 
     #[inline]
-    pub fn url_to_path(
-        url: &Url,
-        options: &ConfigurationLoaderFsOptions,
-    ) -> Result<PathBuf, io::Error> {
+    pub fn url_to_path(url: &Url, options: &FsOptions) -> Result<PathBuf, io::Error> {
         cfg_if! {
             if #[cfg(target_os="windows")] {
                 let is_windows = true;
@@ -381,7 +378,7 @@ impl ConfigurationLoaderFs {
     }
 }
 
-impl ConfigurationLoaderFs {
+impl Fs {
     pub fn new() -> Self {
         Default::default()
     }
@@ -395,28 +392,25 @@ impl ConfigurationLoaderFs {
         self
     }
 
-    fn get_options(
-        &self,
-        url: &Url,
-    ) -> Result<ConfigurationLoaderFsOptions, ConfigurationLoadError> {
-        loader::deserialize_query_string::<ConfigurationLoaderFsOptions>(NAME, url).map(
-            |mut options| {
-                if let Some(soft_errors) = self.options.soft_errors.maybe_soft_error_list() {
-                    soft_errors
-                        .iter()
-                        .for_each(|soft_error| options.soft_errors.add_soft_error(*soft_error))
-                }
-                options
-            },
-        )
+    fn get_options(&self, url: &Url) -> Result<FsOptions, Error> {
+        loader::deserialize_query_string::<FsOptions>(NAME, url).map(|mut options| {
+            if let Some(soft_errors) = self.options.soft_errors.maybe_soft_error_list() {
+                soft_errors
+                    .iter()
+                    .for_each(|soft_error| options.soft_errors.add_soft_error(*soft_error))
+            }
+            options
+        })
     }
 }
 
-impl ConfigurationLoader for ConfigurationLoaderFs {
-    fn name(&self) -> String {
-        NAME.into()
+impl Display for Fs {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str(NAME)
     }
+}
 
+impl Loader for Fs {
     /// In this case "fs" and "file".
     fn scheme_list(&self) -> Vec<String> {
         SCHEME_LIST.iter().cloned().map(String::from).collect()
@@ -427,7 +421,7 @@ impl ConfigurationLoader for ConfigurationLoaderFs {
         url: &Url,
         maybe_whitelist: Option<&[String]>,
         skip_soft_errors: bool,
-    ) -> Result<Vec<(String, ConfigurationEntity)>, ConfigurationLoadError> {
+    ) -> Result<Vec<(String, ConfigurationEntity)>, Error> {
         let options = self.get_options(url)?;
         let mut entity_list =
             Self::get_entity_list(url, &options, maybe_whitelist, skip_soft_errors)?;
@@ -471,7 +465,7 @@ impl ConfigurationLoader for ConfigurationLoaderFs {
                         }
                         Ok(())
                     } else {
-                        Err(ConfigurationLoadError::Load {
+                        Err(Error::Load {
                             loader: NAME.to_string(),
                             url: entity.url().clone(),
                             description: "read contents of file".to_string().into(),

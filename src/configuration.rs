@@ -1,8 +1,6 @@
 use crate::{
-    entity::ConfigurationEntity,
-    error::{ConfigurationError, ConfigurationLoadError},
-    loader::ConfigurationLoader,
-    parser::ConfigurationParser,
+    entity::ConfigurationEntity, error::Error, loader::Error as LoaderError, loader::Loader,
+    parser::Parser,
 };
 use anyhow::anyhow;
 use cfg_if::cfg_if;
@@ -13,8 +11,8 @@ use url::Url;
 #[derive(Debug, Default)]
 pub struct Configuration {
     url_list: Vec<Url>,
-    loader_list: Vec<Box<dyn ConfigurationLoader>>,
-    parser_list: Vec<Box<dyn ConfigurationParser>>,
+    loader_list: Vec<Box<dyn Loader>>,
+    parser_list: Vec<Box<dyn Parser>>,
     maybe_whitelist: Option<Vec<String>>,
 }
 
@@ -23,17 +21,21 @@ impl Configuration {
         let new = Self {
             parser_list: vec![
                 #[cfg(feature = "env")]
-                Box::new(crate::parser::env::ConfigurationParserEnv::new()),
+                Box::new(crate::parser::env::Env::new()),
                 #[cfg(feature = "json")]
-                Box::new(crate::parser::json::ConfigurationParserJson::new()),
+                Box::new(crate::parser::json::Json::new()),
                 #[cfg(feature = "toml")]
-                Box::new(crate::parser::toml::ConfigurationParserToml::new()),
+                Box::new(crate::parser::toml::Toml::new()),
                 #[cfg(feature = "yaml")]
-                Box::new(crate::parser::yaml::ConfigurationParserYaml::new()),
+                Box::new(crate::parser::yaml::Yaml::new()),
             ],
             ..Default::default()
         };
-        let parser_name_list: Vec<_> = new.parser_list.iter().map(|parser| parser.name()).collect();
+        let parser_name_list: Vec<_> = new
+            .parser_list
+            .iter()
+            .map(|parser| format!("{parser}"))
+            .collect();
         if parser_name_list.is_empty() {
             cfg_if! {
                 if #[cfg(feature = "tracing")] {
@@ -70,12 +72,12 @@ impl Configuration {
             .any(|inner_url| inner_url.scheme() == url.scheme())
     }
 
-    pub fn with_url(mut self, url: Url) -> Result<Self, ConfigurationLoadError> {
+    pub fn with_url(mut self, url: Url) -> Result<Self, Error> {
         self.add_url(url)?;
         Ok(self)
     }
 
-    pub fn add_url(&mut self, url: Url) -> Result<(), ConfigurationLoadError> {
+    pub fn add_url(&mut self, url: Url) -> Result<(), Error> {
         let scheme = url.scheme().to_string();
         let maybe_loader_name = if let Some(loader) = self
             .loader_list
@@ -83,22 +85,22 @@ impl Configuration {
             .find(|loader| loader.scheme_list().contains(&scheme))
         {
             self.url_list.push(url.clone());
-            Some(loader.name())
+            Some(format!("{loader}"))
         } else {
             #[allow(unused_mut)]
-            let mut included_loader_list: Vec<Box<dyn ConfigurationLoader>> = Vec::new();
+            let mut included_loader_list: Vec<Box<dyn Loader>> = Vec::new();
 
             #[cfg(feature = "env")]
-            included_loader_list.push(Box::new(crate::loader::env::ConfigurationLoaderEnv::new()));
+            included_loader_list.push(Box::new(crate::loader::env::Env::new()));
 
             #[cfg(feature = "fs")]
-            included_loader_list.push(Box::new(crate::loader::fs::ConfigurationLoaderFs::new()));
+            included_loader_list.push(Box::new(crate::loader::fs::Fs::new()));
 
             included_loader_list
                 .into_iter()
                 .find(|loader| loader.scheme_list().contains(&scheme))
                 .map(|loader| {
-                    let name = loader.name();
+                    let name = format!("{loader}");
                     self.add_boxed_loader(loader);
                     self.url_list.push(url.clone());
                     name
@@ -113,7 +115,7 @@ impl Configuration {
                 }
             }
             Ok(())
-        }).unwrap_or(Err(ConfigurationLoadError::LoaderNotFound { scheme, url }))
+        }).unwrap_or(Err(LoaderError::LoaderNotFound { scheme, url }.into()))
     }
 
     pub fn remove_url(&mut self, url: &Url) -> bool {
@@ -158,7 +160,7 @@ impl Configuration {
 
     pub fn with_loader<L>(mut self, loader: L) -> Self
     where
-        L: ConfigurationLoader + 'static,
+        L: Loader + 'static,
     {
         self.add_boxed_loader(Box::new(loader));
         self
@@ -166,28 +168,27 @@ impl Configuration {
 
     pub fn add_loader<L>(&mut self, loader: L)
     where
-        L: ConfigurationLoader + 'static,
+        L: Loader + 'static,
     {
         self.add_boxed_loader(Box::new(loader));
     }
 
-    pub fn with_boxed_loader(mut self, loader: Box<dyn ConfigurationLoader>) -> Self {
+    pub fn with_boxed_loader(mut self, loader: Box<dyn Loader>) -> Self {
         self.add_boxed_loader(loader);
         self
     }
 
-    pub fn add_boxed_loader(&mut self, loader: Box<dyn ConfigurationLoader>) {
+    pub fn add_boxed_loader(&mut self, loader: Box<dyn Loader>) {
         cfg_if! {
             if #[cfg(feature = "tracing")] {
                 tracing::debug!(
-                    loader=loader.name(),
+                    loader=%loader,
                     schema_list=?loader.scheme_list(),
                     "Added configuration loader"
                 );
             } else if #[cfg(feature = "logging")] {
                 log::debug!(
-                    "msg=\"Added configuration loader\" loader={:?} schema_list={:?}",
-                    loader.name(),
+                    "msg=\"Added configuration loader\" loader=\"{loader}\" schema_list={:?}",
                     loader.scheme_list()
                 );
             }
@@ -198,7 +199,7 @@ impl Configuration {
     pub fn remove_loader_and_urls<S: AsRef<str>>(
         &mut self,
         scheme: S,
-    ) -> Option<(Box<dyn ConfigurationLoader>, Vec<Url>)> {
+    ) -> Option<(Box<dyn Loader>, Vec<Url>)> {
         let scheme_string = scheme.as_ref().to_string();
         if let Some(index) = self
             .loader_list
@@ -209,14 +210,13 @@ impl Configuration {
             cfg_if! {
                 if #[cfg(feature = "tracing")] {
                     tracing::debug!(
-                        loader=loader.name(),
+                        loader=%loader,
                         schema_list=?loader.scheme_list(),
                         "Removed configuration loader"
                     );
                 } else if #[cfg(feature = "logging")] {
                     log::debug!(
-                        "message=\"Removed configuration loader\" loader={:?} schema_list={:?}",
-                        loader.name(),
+                        "message=\"Removed configuration loader\" loader=\"{loader}\" schema_list={:?}",
                         loader.scheme_list()
                     );
                 }
@@ -230,13 +230,14 @@ impl Configuration {
     pub fn load(
         &self,
         skip_soft_errors: bool,
-    ) -> Result<Vec<(String, Vec<ConfigurationEntity>)>, ConfigurationLoadError> {
+    ) -> Result<Vec<(String, Vec<ConfigurationEntity>)>, Error> {
         load(
             self.url_list.as_slice(),
             self.loader_list.as_slice(),
             self.maybe_whitelist.as_deref(),
             skip_soft_errors,
         )
+        .map_err(Error::from)
     }
 }
 
@@ -250,7 +251,7 @@ impl Configuration {
 
     pub fn with_parser<P>(mut self, parser: P) -> Self
     where
-        P: ConfigurationParser + 'static,
+        P: Parser + 'static,
     {
         self.add_parser(parser);
         self
@@ -258,28 +259,27 @@ impl Configuration {
 
     pub fn add_parser<P>(&mut self, parser: P)
     where
-        P: ConfigurationParser + 'static,
+        P: Parser + 'static,
     {
         self.add_boxed_parser(Box::new(parser));
     }
 
-    pub fn with_boxed_parser(mut self, parser: Box<dyn ConfigurationParser>) -> Self {
+    pub fn with_boxed_parser(mut self, parser: Box<dyn Parser>) -> Self {
         self.add_boxed_parser(parser);
         self
     }
 
-    pub fn add_boxed_parser(&mut self, parser: Box<dyn ConfigurationParser>) {
+    pub fn add_boxed_parser(&mut self, parser: Box<dyn Parser>) {
         cfg_if! {
             if #[cfg(feature = "tracing")] {
                 tracing::debug!(
-                    parser=parser.name(),
+                    parser=%parser,
                     format_list=?parser.supported_format_list(),
                     "Added configuration parser"
                 );
             } else if #[cfg(feature = "logging")] {
                 log::debug!(
-                    "msg=\"Added configuration parser\" parser={:?} format_list={:?}",
-                    parser.name(),
+                    "msg=\"Added configuration parser\" parser=\"{parser}\" format_list={:?}",
                     parser.supported_format_list()
                 );
             }
@@ -287,7 +287,7 @@ impl Configuration {
         self.parser_list.push(parser);
     }
 
-    pub fn remove_parser<F: AsRef<str>>(&mut self, format: F) -> Vec<Box<dyn ConfigurationParser>> {
+    pub fn remove_parser<F: AsRef<str>>(&mut self, format: F) -> Vec<Box<dyn Parser>> {
         let format = format.as_ref().to_lowercase();
         let mut parser_list = Vec::new();
         while let Some(index) = self
@@ -299,14 +299,13 @@ impl Configuration {
             cfg_if! {
                 if #[cfg(feature = "tracing")] {
                     tracing::debug!(
-                        parser=parser.name(),
+                        parser=%parser,
                         format_list=?parser.supported_format_list(),
                         "Removed configuration parser"
                     );
                 } else if #[cfg(feature = "logging")] {
                     log::debug!(
-                        "msg=\"Removed configuration parser\" parser={:?} format_list={:?}",
-                        parser.name(),
+                        "msg=\"Removed configuration parser\" parser=\"{parser}\" format_list={:?}",
                         parser.supported_format_list()
                     );
                 }
@@ -319,7 +318,7 @@ impl Configuration {
     pub fn load_and_parse(
         &self,
         skip_soft_errors: bool,
-    ) -> Result<Vec<(String, Vec<ConfigurationEntity>)>, ConfigurationError> {
+    ) -> Result<Vec<(String, Vec<ConfigurationEntity>)>, Error> {
         let mut load_result = self.load(skip_soft_errors)?;
         parse(load_result.as_mut(), self.parser_list.as_slice())?;
         Ok(load_result)
@@ -335,10 +334,7 @@ impl Configuration {
             .unwrap_or(false)
     }
 
-    pub fn load_whitelist_from_env<K: AsRef<str>>(
-        &mut self,
-        key: K,
-    ) -> Result<(), ConfigurationError> {
+    pub fn load_whitelist_from_env<K: AsRef<str>>(&mut self, key: K) -> Result<(), Error> {
         let whitelist = env::var(key.as_ref())
             .map(|value| value.trim().to_lowercase())
             .map(|value| {
@@ -349,7 +345,7 @@ impl Configuration {
                 }
             })
             .map_err(|error| {
-                ConfigurationError::Other(anyhow!("Invalid key or the value is not set: {}", error))
+                Error::Other(anyhow!("Invalid key or the value is not set: {}", error))
             })?;
         if whitelist.is_empty() {
             cfg_if! {
@@ -372,10 +368,7 @@ impl Configuration {
         Ok(())
     }
 
-    pub fn set_whitelist_from_env<K: AsRef<str>>(
-        mut self,
-        key: K,
-    ) -> Result<Self, ConfigurationError> {
+    pub fn set_whitelist_from_env<K: AsRef<str>>(mut self, key: K) -> Result<Self, Error> {
         self.load_whitelist_from_env(key)?;
         Ok(self)
     }
@@ -411,10 +404,7 @@ impl Configuration {
 }
 
 impl Configuration {
-    pub fn load_parse_merge(
-        &self,
-        skip_soft_errors: bool,
-    ) -> Result<Vec<(String, Input)>, ConfigurationError> {
+    pub fn load_parse_merge(&self, skip_soft_errors: bool) -> Result<Vec<(String, Input)>, Error> {
         let mut parsed = self.load_and_parse(skip_soft_errors)?;
         merge(parsed.as_mut())
     }
@@ -423,7 +413,7 @@ impl Configuration {
         &self,
         schema_list: &[(String, InputSchemaType)],
         skip_soft_errors: bool,
-    ) -> Result<Vec<(String, Input)>, ConfigurationError> {
+    ) -> Result<Vec<(String, Input)>, Error> {
         let mut merged = self.load_parse_merge(skip_soft_errors)?;
         validate(merged.as_mut(), schema_list)
     }
@@ -431,10 +421,10 @@ impl Configuration {
 
 pub fn load(
     url_list: &[Url],
-    loader_list: &[Box<dyn ConfigurationLoader>],
+    loader_list: &[Box<dyn Loader>],
     maybe_whitelist: Option<&[String]>,
     skip_soft_errors: bool,
-) -> Result<Vec<(String, Vec<ConfigurationEntity>)>, ConfigurationLoadError> {
+) -> Result<Vec<(String, Vec<ConfigurationEntity>)>, LoaderError> {
     let mut result: Vec<(String, Vec<_>)> = Vec::with_capacity(url_list.len());
     url_list
         .iter()
@@ -462,7 +452,7 @@ pub fn load(
                             });
                     })
             } else {
-                Err(ConfigurationLoadError::LoaderNotFound {
+                Err(LoaderError::LoaderNotFound {
                     scheme: scheme_string,
                     url: url.clone(),
                 })
@@ -473,8 +463,8 @@ pub fn load(
 
 pub fn parse(
     plugin_configuration_list: &mut [(String, Vec<ConfigurationEntity>)],
-    parser_list: &[Box<dyn ConfigurationParser>],
-) -> Result<(), ConfigurationError> {
+    parser_list: &[Box<dyn Parser>],
+) -> Result<(), Error> {
     plugin_configuration_list
         .iter_mut()
         .try_for_each(|(plugin_name, configuration_list)| {
@@ -484,7 +474,7 @@ pub fn parse(
                     if configuration.maybe_parsed_contents().is_none() {
                         let parsed =
                             configuration.parse_contents(parser_list).map_err(|error| {
-                                ConfigurationError::Parse {
+                                Error::Parse {
                                     plugin_name: plugin_name.to_string(),
                                     url: configuration.url().clone(),
                                     item: configuration.item().clone().into(),
@@ -493,15 +483,15 @@ pub fn parse(
                             })?;
                         configuration.set_parsed_contents(parsed);
                     }
-                    Ok::<_, ConfigurationError>(())
+                    Ok::<_, Error>(())
                 })?;
-            Ok::<_, ConfigurationError>(())
+            Ok::<_, Error>(())
         })
 }
 
 pub fn merge(
     plugin_configuration_list: &[(String, Vec<ConfigurationEntity>)],
-) -> Result<Vec<(String, Input)>, ConfigurationError> {
+) -> Result<Vec<(String, Input)>, Error> {
     let mut result = Vec::with_capacity(plugin_configuration_list.len());
     plugin_configuration_list
         .iter()
@@ -526,7 +516,7 @@ pub fn merge(
 pub fn validate(
     plugin_configuration_list: &[(String, Input)],
     schema_list: &[(String, InputSchemaType)],
-) -> Result<Vec<(String, Input)>, ConfigurationError> {
+) -> Result<Vec<(String, Input)>, Error> {
     let mut result = Vec::with_capacity(plugin_configuration_list.len());
     plugin_configuration_list
         .iter()
@@ -544,7 +534,7 @@ pub fn validate(
                 Ok(())
             }?;
             result.push((plugin_name.to_string(), configuration));
-            Ok::<_, ConfigurationError>(())
+            Ok::<_, Error>(())
         })
         .map(|_| result)
 }
